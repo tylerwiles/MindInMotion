@@ -1,0 +1,393 @@
+---
+title: "Hurst_Entropy_Analysis"
+author: "Tyler M. Wiles"
+date: "2025-10-24"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Description
+
+Where is the most updated demographics sheet?
+Need to investigate why some entropies are NaN
+High condition has different behavior between trials 1 & 2?????
+
+# Libraries and Data Management
+
+```{r Libraries and Data Management}
+
+options(scipen = 999)
+rm(list=ls())
+
+library(BayesFactor)
+library(bayestestR)
+library(brms)
+library(cmdstanr)
+library(data.table)
+library(dplyr)
+library(here)
+library(ggplot2)
+
+dat = data.table::fread(here('DATA', 'MIM_Nonlinear_Results.csv'), header = TRUE)
+dat.demographics = as.data.table(read_excel(here("DATA", "MiM_Crunch_demographics_Chang.xlsx"), sheet = 2))
+dat.demographics = dat.demographics[ ,c(3,6:13)] # Remove unwanted columns
+
+# Merge
+dat = merge(dat, dat.demographics, by.x = "id", by.y = "subject_code", all.x = TRUE)
+
+# Remove skipped trials/NaNs
+dat = dat[!(is.nan(dat$hurst) | dat$hurst == "") | !(is.nan(dat$entropy) | dat$entropy == ""), ]
+
+# Cleanup
+setnames(dat, old = c("Age", "Sex(1=M,0=F)", "Handedness (1=R, 2=L)", 
+                      "terrain_trials_speed_ms", "Moca", "SPPB", 
+                      "400_meters_seconds", "400m_speed"),
+         new = c("age", "sex", "handedness", "terrain.speed", 
+                 "moca", "sppb", "time.400m", "speed.400m"))
+dat$handedness = ifelse(dat$handedness == 1, "right", "left")
+dat$sex = ifelse(dat$sex == 1, "male", "female")
+dat$speed = gsub("p", ".", dat$speed)
+
+# Factor
+dat$id = factor(dat$id)
+dat$treadmill = factor(dat$treadmill)
+dat$speed = factor(dat$speed)
+dat$terrain = factor(dat$terrain,
+                     levels = c('flat', 'low', 'med', 'high', 'NaN'))
+dat$trial = factor(dat$trial)
+dat$sex = factor(dat$sex)
+dat$handedness = factor(dat$handedness)
+
+```
+
+# BRMS
+
+## Self-Paced
+
+```{r Self-Paced}
+
+dat.temp = dat[dat$treadmill == 'SP', ]
+
+dat.temp$age = scale(dat.temp$age)
+dat.temp$moca = scale(dat.temp$moca)
+dat.temp$sppb = scale(dat.temp$sppb)
+dat.temp$time.400m = scale(dat.temp$time.400m)
+dat.temp$speed.400m = scale(dat.temp$speed.400m)
+
+m0.sp.hurst = brms::brm(hurst ~ 1 + trial + age + sex + moca + sppb + time.400m + speed.400m + (1 + trial|id),
+                        data = dat.temp,
+                        cores = parallel::detectCores() - 2,
+                        chains = 4,
+                        iter = 6000,
+                        threads = threading(7),
+                        backend = 'cmdstanr',
+                        stan_model_args = list(stanc_options = list('O1')),
+                        control = list(adapt_delta = 0.97,
+                                       max_treedepth = 10),
+                        seed = 9152025,
+                        refresh = 1000)
+m0.sp.hurst
+plot(m0.sp.hurst)
+pp_check(m0.sp.hurst)
+conditional_effects(m0.sp.hurst)
+save(m0.sp.hurst, file = here::here("DATA", "m0.sp.hurst.RData"))
+
+m0.sp.entropy = brms::brm(entropy ~ 1 + trial + age + sex + moca + sppb + time.400m + speed.400m + (1 + trial|id),
+                          data = dat.temp,
+                          cores = parallel::detectCores() - 2,
+                          chains = 4,
+                          iter = 6000,
+                          threads = threading(7),
+                          backend = 'cmdstanr',
+                          stan_model_args = list(stanc_options = list('O1')),
+                          control = list(adapt_delta = 0.97,
+                                         max_treedepth = 10),
+                          seed = 9152025,
+                          refresh = 1000)
+m0.sp.entropy
+plot(m0.sp.entropy)
+pp_check(m0.sp.entropy)
+conditional_effects(m0.sp.entropy)
+save(m0.sp.entropy, file = here::here("DATA", "m0.sp.entropy.RData"))
+
+```
+
+## Terrain
+
+```{r Terrain}
+
+dat.temp = dat[dat$treadmill == 'TM', ]
+
+dat.temp$age = scale(dat.temp$age)
+dat.temp$terrain.speed = scale(dat.temp$terrain.speed)
+
+m0.tm.hurst = brms::brm(hurst ~ 1 + terrain * trial + terrain.speed + (1 + terrain + trial|id),
+                        data = dat.temp,
+                        cores = parallel::detectCores() - 2,
+                        chains = 4,
+                        iter = 6000,
+                        threads = threading(7),
+                        backend = 'cmdstanr',
+                        stan_model_args = list(stanc_options = list('O1')),
+                        control = list(adapt_delta = 0.97,
+                                       max_treedepth = 10),
+                        seed = 9152025,
+                        refresh = 1000)
+m0.tm.hurst
+plot(m0.tm.hurst)
+pp_check(m0.tm.hurst)
+conditional_effects(m0.tm.hurst)
+save(m0.tm.hurst, file = here::here("DATA", "m0.tm.hurst.RData"))
+
+m0.tm.entropy = brms::brm(entropy ~ 1 + terrain * trial + terrain.speed + (1 + terrain + trial|id),
+                          data = dat.temp,
+                          cores = parallel::detectCores() - 2,
+                          chains = 4,
+                          iter = 6000,
+                          threads = threading(7),
+                          backend = 'cmdstanr',
+                          stan_model_args = list(stanc_options = list('O1')),
+                          control = list(adapt_delta = 0.97,
+                                         max_treedepth = 10),
+                          seed = 9152025,
+                          refresh = 1000)
+m0.tm.entropy
+plot(m0.tm.entropy)
+pp_check(m0.tm.entropy)
+conditional_effects(m0.tm.entropy)
+save(m0.tm.entropy, file = here::here("DATA", "m0.tm.entropy.RData"))
+
+```
+
+# BF ANOVA
+
+```{r BF ANOVA}
+
+dat.temp = dat[dat$treadmill == 'TM']
+
+set.seed(9152025)
+BayesFactor::anovaBF(hurst ~ terrain * trial * group, data = dat.temp, whichRandom = 'id')
+
+# Split by group
+BayesFactor::anovaBF(hurst ~ terrain * trial, data = dat.temp[dat.temp$group == 'healthy'], whichRandom = 'id')
+BayesFactor::anovaBF(hurst ~ terrain * trial, data = dat.temp[dat.temp$group == 'unhealthy'], whichRandom = 'id')
+
+# Split by Trial
+BayesFactor::anovaBF(hurst ~ terrain, data = dat.temp[dat.temp$group == 'healthy' & dat.temp$trial == 1], whichRandom = 'id')
+BayesFactor::anovaBF(hurst ~ terrain, data = dat.temp[dat.temp$group == 'unhealthy' & dat.temp$trial == 1], whichRandom = 'id')
+BayesFactor::anovaBF(hurst ~ terrain, data = dat.temp[dat.temp$group == 'healthy' & dat.temp$trial == 2], whichRandom = 'id')
+BayesFactor::anovaBF(hurst ~ terrain, data = dat.temp[dat.temp$group == 'unhealthy' & dat.temp$trial == 2], whichRandom = 'id')
+
+
+
+
+
+# Bayesian Simple Effects Holding Age Constant
+BF_Simple = function(dat, dv, age.group) {
+  BayesFactor::ttestBF(x = dat[[dv]][dat$group == age.group & dat$gender == 'male'],
+                       y = dat[[dv]][dat$group == age.group & dat$gender == 'female'],
+                       paired = FALSE)
+}
+
+
+
+
+BayesFactor::anovaBF(entropy ~ terrain * trial * group, data = dat.temp, whichRandom = 'id')
+
+
+
+
+```
+
+# Mean SD
+
+```{r Mean SD}
+
+table(dat[!duplicated(dat$id)]$gender)
+table(dat[!duplicated(dat$id)]$group)
+table(dat[!duplicated(dat$id)]$group, dat[!duplicated(dat$id)]$gender)
+
+dat[!duplicated(dat$id)] %>%
+  group_by(gender) %>%
+  summarise(mu = format(round(mean(age, na.rm = TRUE), 2), nsmall = 2),
+            sds = format(round(sd(age, na.rm = TRUE), 2), nsmall = 2),
+            .groups = "drop")
+
+```
+
+## Plots
+
+### Speed
+
+```{r Speed}
+
+dat.temp = dat[dat$treadmill == 'SP']
+
+cis = dat.temp %>%
+  group_by(speed) %>%
+  summarise(hurst.mean = mean(hurst),
+            hurst.ci.lower = bayestestR::ci(hurst, ci = 0.95)$CI_low,
+            hurst.ci.upper = bayestestR::ci(hurst, ci = 0.95)$CI_high,
+            entropy.mean = mean(entropy),
+            entropy.ci.lower = bayestestR::ci(entropy, ci = 0.95)$CI_low,
+            entropy.ci.upper = bayestestR::ci(entropy, ci = 0.95)$CI_high)
+
+# Hurst
+plot.hurst = ggplot(cis, aes(x = speed, y = hurst.mean, fill = speed, color = speed)) +
+  theme_classic() +
+  theme(legend.position = "top") +
+  scale_y_continuous(breaks = seq(0, 1, by = 0.1), limits = c(0, 1)) +
+  labs(y = "Hurst Exponent", x = "Belt Speed (m/s)") +
+  # Mean and 95% Credible Interval
+  geom_point(size = 6) +
+  geom_errorbar(aes(ymin = hurst.ci.lower, ymax = hurst.ci.upper),
+                width = 0.3, linewidth = 2,
+                position = position_dodge(width = 0.35)) +
+  # Individual Observations
+  geom_point(data = dat.temp, aes(x = as.numeric(speed) - 0.25, y = hurst),
+             size = 1, color = "black", alpha = 0.3,
+             position = position_jitter(width = 0.05),
+             show.legend = FALSE)
+
+ggsave(filename = 'C:/Users/tyler_3r9w1ip/Downloads/mim_hurst.png', plot = plot.hurst,
+       dpi = "retina", bg = "white")
+
+# Entropy
+plot.entropy = ggplot(cis, aes(x = speed, y = entropy.mean, fill = speed, color = speed)) +
+  theme_classic() +
+  theme(legend.position = "top") +
+  labs(y = "Sample Entropy", x = "Belt Speed (m/s)") +
+  # Mean and 95% Credible Interval
+  geom_point(size = 6) +
+  geom_errorbar(aes(ymin = entropy.ci.lower, ymax = entropy.ci.upper),
+                width = 0.3, linewidth = 2,
+                position = position_dodge(width = 0.35)) +
+  # Individual Observations
+  geom_point(data = dat.temp, aes(x = as.numeric(speed) - 0.25, y = entropy),
+             size = 1, color = "black", alpha = 0.3,
+             position = position_jitter(width = 0.05),
+             show.legend = FALSE)
+
+ggsave(filename = 'C:/Users/tyler_3r9w1ip/Downloads/mim_entropy.png', plot = plot.entropy,
+       dpi = "retina", bg = "white")
+
+# Lines instead of points
+ggplot(cis, aes(x = speed, y = hurst.mean, fill = speed, color = speed)) +
+  theme_classic() +
+  theme(legend.position = "top") +
+  scale_y_continuous(breaks = seq(0, 1, by = 0.1), limits = c(0, 1)) +
+  labs(y = "Hurst Exponent", x = "Belt Speed (m/s)") +
+  # Individual Observations
+  geom_line(data = dat.temp, aes(x = speed, y = hurst, group = id),
+            size = 1, color = "black", alpha = 0.3, show.legend = FALSE) +
+  # Mean and 95% Credible Interval
+  geom_point(size = 6) +
+  geom_errorbar(aes(ymin = hurst.ci.lower, ymax = hurst.ci.upper),
+                width = 0.3, linewidth = 2,
+                position = position_dodge(width = 0.35)) +
+  facet_grid(rows = vars(trial))
+
+ggplot(cis, aes(x = speed, y = entropy.mean, fill = speed, color = speed)) +
+  theme_classic() +
+  theme(legend.position = "top") +
+  labs(y = "Sample Entropy", x = "Belt Speed (m/s)") +
+  # Individual Observations
+  geom_line(data = dat.temp, aes(x = speed, y = entropy, group = id),
+            size = 1, color = "black", alpha = 0.3, show.legend = FALSE) +
+  # Mean and 95% Credible Interval
+  geom_point(size = 6) +
+  geom_errorbar(aes(ymin = entropy.ci.lower, ymax = entropy.ci.upper),
+                width = 0.3, linewidth = 2,
+                position = position_dodge(width = 0.35)) +
+  facet_grid(rows = vars(trial))
+
+```
+
+### Terrain
+
+```{r Terrain}
+
+dat.temp = dat[dat$treadmill == 'TM']
+
+cis = dat.temp %>%
+  group_by(terrain) %>%
+  summarise(hurst.mean = mean(hurst),
+            hurst.ci.lower = bayestestR::ci(hurst, ci = 0.95)$CI_low,
+            hurst.ci.upper = bayestestR::ci(hurst, ci = 0.95)$CI_high,
+            entropy.mean = mean(entropy),
+            entropy.ci.lower = bayestestR::ci(entropy, ci = 0.95)$CI_low,
+            entropy.ci.upper = bayestestR::ci(entropy, ci = 0.95)$CI_high)
+
+# Hurst
+plot.hurst = ggplot(cis, aes(x = terrain, y = hurst.mean, fill = terrain, color = terrain)) +
+  theme_classic() +
+  theme(legend.position = "top") +
+  scale_y_continuous(breaks = seq(0, 1, by = 0.1), limits = c(0, 1)) +
+  labs(y = "Hurst Exponent", x = "Terrain") +
+  # Mean and 95% Credible Interval
+  geom_point(size = 6) +
+  geom_errorbar(aes(ymin = hurst.ci.lower, ymax = hurst.ci.upper),
+                width = 0.3, linewidth = 2,
+                position = position_dodge(width = 0.35)) +
+  # Individual Observations
+  geom_point(data = dat.temp, aes(x = as.numeric(terrain) - 0.25, y = hurst),
+             size = 1, color = "black", alpha = 0.3,
+             position = position_jitter(width = 0.05),
+             show.legend = FALSE)
+
+ggsave(filename = 'C:/Users/tyler_3r9w1ip/Downloads/mim_hurst_terrain.png', plot = plot.hurst,
+       dpi = "retina", bg = "white")
+
+# Entropy
+plot.entropy = ggplot(cis, aes(x = terrain, y = entropy.mean, fill = terrain, color = terrain)) +
+  theme_classic() +
+  theme(legend.position = "top") +
+  labs(y = "Sample Entropy", x = "Terrain") +
+  # Mean and 95% Credible Interval
+  geom_point(size = 6) +
+  geom_errorbar(aes(ymin = entropy.ci.lower, ymax = entropy.ci.upper),
+                width = 0.3, linewidth = 2,
+                position = position_dodge(width = 0.35)) +
+  # Individual Observations
+  geom_point(data = dat.temp, aes(x = as.numeric(terrain) - 0.25, y = entropy),
+             size = 1, color = "black", alpha = 0.3,
+             position = position_jitter(width = 0.05),
+             show.legend = FALSE)
+
+ggsave(filename = 'C:/Users/tyler_3r9w1ip/Downloads/mim_entropy_terrain.png', plot = plot.entropy,
+       dpi = "retina", bg = "white")
+
+# Lines instead of points
+ggplot(cis, aes(x = terrain, y = hurst.mean, fill = terrain, color = terrain)) +
+  theme_classic() +
+  theme(legend.position = "top") +
+  scale_y_continuous(breaks = seq(0, 1, by = 0.1), limits = c(0, 1)) +
+  labs(y = "Hurst Exponent", x = "Terrain") +
+  # Individual Observations
+  geom_line(data = dat.temp, aes(x = terrain, y = hurst, group = id),
+            size = 1, color = "black", alpha = 0.3, show.legend = FALSE) +
+  # Mean and 95% Credible Interval
+  geom_point(size = 6) +
+  geom_errorbar(aes(ymin = hurst.ci.lower, ymax = hurst.ci.upper),
+                width = 0.3, linewidth = 2,
+                position = position_dodge(width = 0.35)) +
+  facet_grid(rows = vars(trial))
+
+ggplot(cis, aes(x = terrain, y = entropy.mean, fill = terrain, color = terrain)) +
+  theme_classic() +
+  theme(legend.position = "top") +
+  labs(y = "Sample Entropy", x = "Terrain") +
+  # Individual Observations
+  geom_line(data = dat.temp, aes(x = terrain, y = entropy, group = id),
+            size = 1, color = "black", alpha = 0.3, show.legend = FALSE) +
+  # Mean and 95% Credible Interval
+  geom_point(size = 6) +
+  geom_errorbar(aes(ymin = entropy.ci.lower, ymax = entropy.ci.upper),
+                width = 0.3, linewidth = 2,
+                position = position_dodge(width = 0.35)) +
+  facet_grid(rows = vars(trial))
+
+```
