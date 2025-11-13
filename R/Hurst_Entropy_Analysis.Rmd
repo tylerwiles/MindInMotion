@@ -11,9 +11,9 @@ knitr::opts_chunk$set(echo = TRUE)
 
 Description
 
-Where is the most updated demographics sheet?
 Need to investigate why some entropies are NaN
 High condition has different behavior between trials 1 & 2?????
+Why is trial 2 so different from trial 1?
 
 # Libraries and Data Management
 
@@ -30,6 +30,7 @@ library(data.table)
 library(dplyr)
 library(here)
 library(ggplot2)
+library(readxl)
 
 dat = data.table::fread(here('DATA', 'MIM_Nonlinear_Results.csv'), header = TRUE)
 dat.demographics = as.data.table(read_excel(here("DATA", "MiM_Crunch_demographics_Chang.xlsx"), sheet = 2))
@@ -77,7 +78,7 @@ dat.temp$sppb = scale(dat.temp$sppb)
 dat.temp$time.400m = scale(dat.temp$time.400m)
 dat.temp$speed.400m = scale(dat.temp$speed.400m)
 
-m0.sp.hurst = brms::brm(hurst ~ 1 + trial + age + sex + moca + sppb + time.400m + speed.400m + (1 + trial|id),
+m0.sp.hurst = brms::brm(hurst ~ 1 + trial + age * sex + moca * sppb + time.400m * speed.400m + (1 + trial|id),
                         data = dat.temp,
                         cores = parallel::detectCores() - 2,
                         chains = 4,
@@ -94,6 +95,12 @@ plot(m0.sp.hurst)
 pp_check(m0.sp.hurst)
 conditional_effects(m0.sp.hurst)
 save(m0.sp.hurst, file = here::here("DATA", "m0.sp.hurst.RData"))
+
+
+hurst ~ 1 + speed * trial + age * sex + moca * sppb + time.400m * speed.400m + (1 + speed + trial|id)
+
+
+
 
 m0.sp.entropy = brms::brm(entropy ~ 1 + trial + age + sex + moca + sppb + time.400m + speed.400m + (1 + trial|id),
                           data = dat.temp,
@@ -124,7 +131,7 @@ dat.temp = dat[dat$treadmill == 'TM', ]
 dat.temp$age = scale(dat.temp$age)
 dat.temp$terrain.speed = scale(dat.temp$terrain.speed)
 
-m0.tm.hurst = brms::brm(hurst ~ 1 + terrain * trial + terrain.speed + (1 + terrain + trial|id),
+m0.tm.hurst = brms::brm(hurst ~ 1 + terrain * trial * age + terrain.speed + (1 + terrain + trial|id),
                         data = dat.temp,
                         cores = parallel::detectCores() - 2,
                         chains = 4,
@@ -142,7 +149,7 @@ pp_check(m0.tm.hurst)
 conditional_effects(m0.tm.hurst)
 save(m0.tm.hurst, file = here::here("DATA", "m0.tm.hurst.RData"))
 
-m0.tm.entropy = brms::brm(entropy ~ 1 + terrain * trial + terrain.speed + (1 + terrain + trial|id),
+m0.tm.entropy = brms::brm(entropy ~ 1 + terrain * trial * age + terrain.speed + (1 + terrain + trial|id),
                           data = dat.temp,
                           cores = parallel::detectCores() - 2,
                           chains = 4,
