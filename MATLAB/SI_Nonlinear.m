@@ -25,6 +25,8 @@
 % Opals are more reliable than loadsol probably.
 % Chris Hass might have foot dominance data.
 
+% H1022_SP_0p25_1 has weird SI
+
 clear; close all; clc;
 
 addpath(genpath('FUNCTIONS'));
@@ -36,7 +38,7 @@ my_directory = 'R:\Ferris-Lab\share\MindInMotion\Data';
 % output_directory = 'C:\Users\tyler_3r9w1ip\Desktop\Github_Repositories\MindinMotion\DATA';
 output_directory = 'C:\Users\twiles\Desktop\Github-Repositories\MindInMotion\DATA';
 
-%% Find minimum number of strides for the entire trial
+%% Find minimum number of contacts for the entire trial
 
 my_folders = dir(fullfile(my_directory, 'H*'));
 my_folders = [my_folders; dir(fullfile(my_directory, 'NH*'))];
@@ -98,7 +100,7 @@ end
 n_contacts_diff = n_contacts_left - n_contacts_right;
 
 min_contacts = table(id, treadmill, speed, terrain, trial, n_steps, n_contacts_left, n_contacts_right, n_contacts_diff, ...
-    'VariableNames', {'id', 'treadmill', 'speed', 'terrain', 'trial', 'n.steps', 'n.contacts.left', 'n.contacts.right', 'n.contacts.diff'});
+    'VariableNames', {'id', 'treadmill', 'speed', 'terrain', 'trial', 'n.contacts', 'n.contacts.left', 'n.contacts.right', 'n.contacts.diff'});
 writetable(min_contacts, fullfile(output_directory, 'min_contacts.csv'));
 
 %% Hurst and Entropy
@@ -108,6 +110,8 @@ clear; close all; clc;
 addpath(genpath('FUNCTIONS'));
 addpath(genpath('DATA'));
 addpath(genpath('MATLAB'));
+addpath(genpath('R:\Ferris-Lab\share\MindInMotion\eeglab'));
+eeglab % Load EEGLAB
 my_directory = 'R:\Ferris-Lab\share\MindInMotion\Data';
 % output_directory = 'C:\Users\tyler_3r9w1ip\Desktop\Github_Repositories\MindinMotion\DATA';
 output_directory = 'C:\Users\twiles\Desktop\Github-Repositories\MindInMotion\DATA';
@@ -166,14 +170,12 @@ parfor i = 1:length(my_files)
     contacts_latency = table2array(dat(contacts,1));
 
     % If minimum number of contacts are not met then add NaN.
-    % if length(contacts) < min_contacts
-    %     hursts(i,:) = NaN;
-    %     entropies(i,:) = NaN;
-    % else
-    %     contacts_latency = contacts_latency(1:min_contacts); % Cut to first # of minimum strides
-    % end
-
-    % Calculate step intervals
+    if length(contacts) < min_contacts
+        hursts(i,:) = NaN;
+        entropies(i,:) = NaN;
+    else
+        % contacts_latency = contacts_latency(1:min_contacts); % Cut to first # of minimum strides
+        % Calculate step intervals
     step_intervals = diff(contacts_latency)/dat_temp.srate;
 
     % Hurst Exponent
@@ -192,6 +194,27 @@ parfor i = 1:length(my_files)
     save_path = fullfile(output_directory, '\FIGURES\', save_name);
     saveas(f, save_path);
     close(f);
+    end
+
+    % % Calculate step intervals
+    % step_intervals = diff(contacts_latency)/dat_temp.srate;
+    % 
+    % % Hurst Exponent
+    % hurst = median(bayesH(step_intervals, 200));
+    % hursts(i,:) = hurst;
+    % 
+    % % Entropy
+    % entropy = Samp_En(step_intervals, 2 , 0.25, std(step_intervals));
+    % entropies(i,:) = entropy;
+    % 
+    % % Plot/save stride intervals to check
+    % f = figure('Visible', 'off');
+    % plot(step_intervals);
+    % % ylim([1, 2]);
+    % save_name = sprintf('%s_%s_%s_%s.png', temp_id{6}, temp_id_condition{1}, temp_id_condition{2}, temp_id_condition{3});
+    % save_path = fullfile(output_directory, '\FIGURES\', save_name);
+    % saveas(f, save_path);
+    % close(f);
 
 end
 
