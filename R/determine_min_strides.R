@@ -8,9 +8,7 @@ library(dplyr)
 library(here)
 library(ggplot2)
 
-dat = data.table::fread(here('DATA', 'min_strides.csv'), header = TRUE)
-
-dat$group = ifelse(grepl("^H", dat$id), "healthy", "unhealthy") # Specify clinical(?) group
+dat = data.table::fread(here('DATA', 'min_contacts.csv'), header = TRUE)
 
 dat$speed = gsub("p", ".", dat$speed)
 
@@ -20,6 +18,22 @@ dat$speed = factor(dat$speed)
 dat$terrain = factor(dat$terrain,
                      levels = c('flat', 'low', 'med', 'high', 'NaN'))
 dat$trial = factor(dat$trial)
-dat$group = factor(dat$group)
 
-hist(dat$n_stride_intervals, breaks = 50)
+hist(dat$n.steps, breaks = 50)
+hist(dat$n.contacts.left, breaks = 50)
+hist(dat$n.contacts.right, breaks = 50)
+hist(dat$n.contacts.diff, breaks = 50)
+
+table(dat$id[dat$n.steps < 50])
+table(dat$id[dat$n.steps < 50 & dat$n.contacts.diff > 2 | dat$n.contacts.diff < -2])
+
+hist(dat$n.steps[dat$terrain == 'flat'], breaks = 50)
+hist(dat$n.steps[dat$terrain == 'low'], breaks = 50)
+hist(dat$n.steps[dat$terrain == 'med'], breaks = 50)
+hist(dat$n.steps[dat$terrain == 'high'], breaks = 50)
+
+hist(dat$n.contacts.diff[dat$terrain == 'flat'], breaks = 50)
+hist(dat$n.contacts.diff[dat$terrain == 'low'], breaks = 50)
+hist(dat$n.contacts.diff[dat$terrain == 'med'], breaks = 50)
+hist(dat$n.contacts.diff[dat$terrain == 'high'], breaks = 50)
+
