@@ -178,45 +178,25 @@ parfor i = 1:length(my_files)
         contacts_latency = contacts_latency(length(contacts_latency) - min_contacts:end); % Cut to last # of minimum strides
 
         % Calculate step intervals
-    % step_intervals = diff(contacts_latency)/dat_temp.srate;
-    % 
-    % % Hurst Exponent
-    % hurst = median(bayesH(step_intervals, 200));
-    % hursts(i,:) = hurst;
-    % 
-    % % Entropy
-    % entropy = Samp_En(step_intervals, 2 , 0.25, std(step_intervals));
-    % entropies(i,:) = entropy;
-    % 
-    % % Plot/save stride intervals to check
-    % f = figure('Visible', 'off');
-    % plot(step_intervals);
-    % % ylim([1, 2]);
-    % save_name = sprintf('%s_%s_%s_%s.png', temp_id{6}, temp_id_condition{1}, temp_id_condition{2}, temp_id_condition{3});
-    % save_path = fullfile(output_directory, '\FIGURES\', save_name);
-    % saveas(f, save_path);
-    % close(f);
+        step_intervals = diff(contacts_latency)/dat_temp.srate;
+
+        % Hurst Exponent
+        hurst = median(bayesH(step_intervals, 200));
+        hursts(i,:) = hurst;
+
+        % Entropy
+        entropy = Samp_En(step_intervals, 2 , 0.25, std(step_intervals));
+        entropies(i,:) = entropy;
+
+        % Plot/save stride intervals to check
+        % f = figure('Visible', 'off');
+        % plot(step_intervals);
+        % % ylim([1, 2]);
+        % save_name = sprintf('%s_%s_%s_%s.png', temp_id{6}, temp_id_condition{1}, temp_id_condition{2}, temp_id_condition{3});
+        % save_path = fullfile(output_directory, '\FIGURES\', save_name);
+        % saveas(f, save_path);
+        % close(f);
     end
-
-    % Calculate step intervals
-    step_intervals = diff(contacts_latency)/dat_temp.srate;
-
-    % Hurst Exponent
-    hurst = median(bayesH(step_intervals, 200));
-    hursts(i,:) = hurst;
-
-    % Entropy
-    entropy = Samp_En(step_intervals, 2 , 0.25, std(step_intervals));
-    entropies(i,:) = entropy;
-
-    % Plot/save stride intervals to check
-    % f = figure('Visible', 'off');
-    % plot(step_intervals);
-    % % ylim([1, 2]);
-    % save_name = sprintf('%s_%s_%s_%s.png', temp_id{6}, temp_id_condition{1}, temp_id_condition{2}, temp_id_condition{3});
-    % save_path = fullfile(output_directory, '\FIGURES\', save_name);
-    % saveas(f, save_path);
-    % close(f);
 
 end
 
