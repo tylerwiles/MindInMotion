@@ -55,6 +55,7 @@ parfor i = 1:length(my_folders)
     files{i} = [files_s; files_t];
 end
 my_files = vertcat(files{:});
+my_files(1404,:) = []; % No data for this trial?
 
 parfor i = 1:length(my_files)
 
@@ -81,26 +82,60 @@ parfor i = 1:length(my_files)
     dat = struct2table(dat_temp.event); % Just get time series of gait events
 
     % Cut timeseries to start and end of trial
-    dat_start = find(strcmp(dat{:,7}, 'TrialStart'));
-    dat_end = find(strcmp(dat{:,7}, 'TrialEnd'));
-    dat = dat(dat_start:dat_end, :);
+    dat_start = find(strcmp(dat.type, 'TrialStart'));
+    dat_end = find(strcmp(dat.type, 'TrialEnd'));
+    dat = dat(dat_start:dat_end, :); % Cut data to trial start and end
+    dat{:,1} = (dat.latency - dat.latency(1)) / dat_temp.srate; % Make trial start == 0, latency is now time technically
 
-    % Find left and right heel contacts
-    contacts_left = find(strcmp(dat{:,7}, 'LHS'));
-    contacts_right = find(strcmp(dat{:,7}, 'RHS'));
-    contacts = sort([contacts_left; contacts_right], 'ascend');
+    %% Loop through each minute of the time series to get the number of contacts
 
-    % Get total number
-    n_steps(i,:) = length(contacts);
-    n_contacts_left(i,:) = length(contacts_left);
-    n_contacts_right(i,:) = length(contacts_right);
+    % Split data into 60 second intervals that does NOT contain the final end point
+    edges = [0 60 120 inf];
+
+    % Preallocate per-file results
+    contacts_left_count = zeros(1,3);
+    contacts_right_count = zeros(1,3);
+    contacts_all_count = zeros(1,3);
+
+    for k = 1:3
+
+        % Segment data into the chunks
+        mask = (dat{:,1} >= edges(k)) & (dat{:,1} < edges(k+1));
+        seg = dat{:,7}(mask);
+
+        % Find contacts in this segment
+        contacts_left = find(seg == "LHS");
+        contacts_right = find(seg == "RHS");
+        contacts_all = sort([contacts_left; contacts_right], 'ascend');
+
+        % Store counts
+        contacts_left_count(k) = numel(contacts_left);
+        contacts_right_count(k) = numel(contacts_right);
+        contacts_all_count(k) = numel(contacts_all);
+
+    end
+
+    % Assign to parfor i
+    n_contacts_left(i,:) = contacts_left_count;
+    n_contacts_right(i,:) = contacts_right_count;
+    n_steps(i,:) = contacts_all_count;
 
 end
 
-n_contacts_diff = n_contacts_left - n_contacts_right;
+% Group back to entire trial for convenience later
+n_steps_total = n_steps(:,1) + n_steps(:,2) + n_steps(:,3);
+n_contacts_left_total = n_contacts_left(:,1) + n_contacts_left(:,2) + n_contacts_left(:,3);
+n_contacts_right_total = n_contacts_right(:,1) + n_contacts_right(:,2) + n_contacts_right(:,3);
 
-min_contacts = table(id, treadmill, speed, terrain, trial, n_steps, n_contacts_left, n_contacts_right, n_contacts_diff, ...
-    'VariableNames', {'id', 'treadmill', 'speed', 'terrain', 'trial', 'n.contacts', 'n.contacts.left', 'n.contacts.right', 'n.contacts.diff'});
+min_contacts = table(id, treadmill, speed, terrain, trial, ...
+    n_steps(:,1), n_steps(:,2), n_steps(:,3), n_steps_total, ...
+    n_contacts_left(:,1), n_contacts_left(:,2), n_contacts_left(:,3), n_contacts_left_total, ...
+    n_contacts_right(:,1), n_contacts_right(:,2), n_contacts_right(:,3), n_contacts_right_total, ...
+    'VariableNames', {'id', 'treadmill', 'speed', 'terrain', 'trial', ...
+        'n.contacts.seg1', 'n.contacts.seg2', 'n.contacts.seg3', 'n.contacts.total', ...
+        'n.contacts.left.seg1', 'n.contacts.left.seg2', 'n.contacts.left.seg3', 'n.contacts.left.total', ...
+        'n.contacts.right.seg1', 'n.contacts.right.seg2', 'n.contacts.right.seg3', 'n.contacts.right.total'});
+
 writetable(min_contacts, fullfile(output_directory, 'min_contacts.csv'));
 
 %% Hurst and Entropy
@@ -159,13 +194,13 @@ parfor i = 1:length(my_files)
     dat = struct2table(dat_temp.event); % Just get time series of gait events
 
     % Cut timeseries to start and end of trial
-    dat_start = find(strcmp(dat{:,7}, 'TrialStart'));
-    dat_end = find(strcmp(dat{:,7}, 'TrialEnd'));
+    dat_start = find(strcmp(dat.type, 'TrialStart'));
+    dat_end = find(strcmp(dat.type, 'TrialEnd'));
     dat = dat(dat_start:dat_end, :);
 
     % Find left and right heel contacts
-    contacts_left = find(strcmp(dat{:,7}, 'LHS'));
-    contacts_right = find(strcmp(dat{:,7}, 'RHS'));
+    contacts_left = find(strcmp(dat.type, 'LHS'));
+    contacts_right = find(strcmp(dat.type, 'RHS'));
     contacts = sort([contacts_left; contacts_right], 'ascend');
     contacts_latency = table2array(dat(contacts,1));
 
