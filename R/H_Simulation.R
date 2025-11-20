@@ -36,7 +36,7 @@ params = expand.grid(strides = strides,
                      KEEP.OUT.ATTRS = FALSE)
 
 # Create a specified number of times we want to repeat our list of parameter sweeps and assign an id value
-repetitions = 2000
+repetitions = 4000
 params = params[rep(seq_len(nrow(params)), each = repetitions), ] # replicate the rows
 rownames(params) = NULL # reset row names
 params$id = rep(seq_len(repetitions), times = nrow(params) / repetitions) # assign an id column 1:repetitions repeating across all combinations
@@ -103,14 +103,14 @@ results = foreach(i = 1:nrow(params),
                     # Create a time series that mimics the behavior of typical stride intervals
                     dat = fgn_sim(n = strides.temp, H = h.target.temp) * si.sd + si.mean
                     h.original = median(bayesH(dat, 200)) # Take the median of 200 samples for H
-                    tol = 0.25 * sd(dat)
-                    sampen.original = Ent_Samp(dat, 2, tol) # Run Sample Entropy on 25% the SD of the time series
+                    # tol = 0.25 * sd(dat)
+                    # sampen.original = Ent_Samp(dat, 2, tol) # Run Sample Entropy on 25% the SD of the time series
                     
                     # Randomly drop percentage number of datapoints
                     dat.rand = dat[-sample(seq_along(dat), size = floor(length(dat) * drops.temp))]
                     h.test.random = median(bayesH(dat.rand, 200)) # Take the median of 200 samples for H
-                    tol = 0.25 * sd(dat.rand)
-                    sampen.test.random = Ent_Samp(dat.rand, 2, tol) # Run Sample Entropy on 25% the SD of the time series
+                    # tol = 0.25 * sd(dat.rand)
+                    # sampen.test.random = Ent_Samp(dat.rand, 2, tol) # Run Sample Entropy on 25% the SD of the time series
                     
                     # Drop contiguous chunks of the percentage of datapoints
                     temp.length = length(dat)
@@ -119,21 +119,21 @@ results = foreach(i = 1:nrow(params),
                     chunk.index = chunk.start:(chunk.start + chunk.length - 1) # Obtain the indices to remove
                     dat.contiguous = dat[-chunk.index] # Remove indices
                     h.test.contiguous = median(bayesH(dat.contiguous, 200)) # Take the median of 200 samples for H
-                    tol = 0.25 * sd(dat.contiguous)
-                    sampen.test.contiguous = Ent_Samp(dat.contiguous, 2, tol) # Run Sample Entropy on 25% the SD of the time series
+                    # tol = 0.25 * sd(dat.contiguous)
+                    # sampen.test.contiguous = Ent_Samp(dat.contiguous, 2, tol) # Run Sample Entropy on 25% the SD of the time series
                     
                     data.frame(id = id.temp,
                                strides = strides.temp,
                                drops = drops.temp,
-                               strides.cut = length(dat.rand),
+                               strides.cut = length(dat) - length(dat.rand),
                                strides.new.length = length(dat.rand),
                                h.target = h.target.temp,
                                h.original = h.original,
                                h.test.random = h.test.random,
                                h.test.contiguous = h.test.contiguous,
-                               sampen.original = sampen.original,
-                               sampen.test.random = sampen.test.random,
-                               sampen.test.contiguous = sampen.test.contiguous,
+                               # sampen.original = sampen.original,
+                               # sampen.test.random = sampen.test.random,
+                               # sampen.test.contiguous = sampen.test.contiguous,
                                stringsAsFactors = FALSE)
                     
                   }
@@ -146,5 +146,5 @@ stopCluster(cl)
 split.points = ceiling(seq(0, nrow(results), length.out = 5))
 for (i in 1:4) {
   part = results[(split.points[i] + 1):split.points[i + 1], ]
-  write.csv(part, here::here("DATA", paste0("H_Simulation_Q_test", i, ".csv")), row.names = FALSE)
+  write.csv(part, here::here("DATA", "H_Simulation", paste0("H_Simulation_Q_test", i, ".csv")), row.names = FALSE)
 }
