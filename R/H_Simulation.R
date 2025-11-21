@@ -17,9 +17,9 @@ library(RcppArmadillo)
 
 # Sweep Setup -----------------------------------------------------------------------
 
-# Commonly observed stride interval mean and standard deviation
-si.mean = 1
-si.sd = 0.2
+# Step interval mean and standard deviation from Gaitprint
+si.mean = 0.52
+si.sd = 0.07
 
 # Create a list of parameter sweeps
 strides = seq(50, 200, 50)
@@ -36,7 +36,7 @@ params = expand.grid(strides = strides,
                      KEEP.OUT.ATTRS = FALSE)
 
 # Create a specified number of times we want to repeat our list of parameter sweeps and assign an id value
-repetitions = 4000
+repetitions = 3000
 params = params[rep(seq_len(nrow(params)), each = repetitions), ] # replicate the rows
 rownames(params) = NULL # reset row names
 params$id = rep(seq_len(repetitions), times = nrow(params) / repetitions) # assign an id column 1:repetitions repeating across all combinations
@@ -142,9 +142,4 @@ print('sweep done')
 
 stopCluster(cl)
 
-# Split results into quarters and export
-split.points = ceiling(seq(0, nrow(results), length.out = 5))
-for (i in 1:4) {
-  part = results[(split.points[i] + 1):split.points[i + 1], ]
-  write.csv(part, here::here("DATA", "H_Simulation", paste0("H_Simulation_Q_test", i, ".csv")), row.names = FALSE)
-}
+write.csv(results, here::here("DATA", "H_Simulation", "H_Simulation.csv"), row.names = FALSE)

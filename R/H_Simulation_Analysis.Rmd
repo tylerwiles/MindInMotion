@@ -1,0 +1,133 @@
+---
+title: "H_Simulation_Analysis"
+author: "Tyler M. Wiles"
+date: "2025-11-20"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Description
+
+
+
+# Libraries and Data Management
+
+```{r Libraries and Data Management}
+
+options(scipen = 999)
+rm(list=ls())
+
+library(data.table)
+library(here)
+library(ggplot2)
+library(ggridges)
+
+files = list.files(path = here::here('DATA', 'H_Simulation'), pattern = "^H_S.*\\.csv$", full.names = TRUE)
+dat = rbindlist(lapply(files, data.table::fread))
+dat = dat[ ,-1]
+
+setnames(dat, old = c('h.original', 'h.test.random', 'h.test.contiguous'),
+         new = c('original', 'random', 'contiguous'))
+
+dat$random.diff = dat$random - dat$original
+dat$contiguous.diff = dat$contiguous - dat$original
+
+# If I want to do anything with the raw data
+# dat.long = melt(dat,
+#                 measure.vars = c('original', 'random', 'contiguous'),
+#                 variable.name = "data.version",
+#                 value.name   = "h.value")
+
+dat.long = melt(dat,
+                measure.vars = tail(names(dat), 5),
+                variable.name = "data.version",
+                value.name   = "h.value")
+
+# Easier to see/compare results with the differences rather than raw values
+dat.long = dat.long[!(dat.long$data.version %in% c('original', 'random', 'contiguous')), ]
+
+dat.long$drops = dat.long$drops * 100 # Change to percent
+
+# Factors
+dat.long$id = factor(dat.long$id)
+dat.long$strides = factor(dat.long$strides)
+dat.long$drops = factor(dat.long$drops)
+dat.long$strides.cut = factor(dat.long$strides.cut)
+dat.long$strides.new.length = dat.long$strides.new.length
+dat.long$h.target = factor(dat.long$h.target, levels = rev(levels(factor(dat.long$h.target))))
+dat.long$data.version = factor(dat.long$data.version)
+
+```
+
+# BFTests
+
+```{r BFTests}
+
+library(BayesFactor)
+
+BayesFactor::anovaBF(h.value ~ strides * drops, data = dat.long)
+
+m0 = aov(h.value ~ strides * drops * data.version * h.target, data = dat.long)
+summary(m0)
+
+m0 = lme4::lmer(h.value ~ strides * drops * data.version + (1 | id), data = dat.long)
+summary(m0)
+
+t.test(dat.long$h.value)
+
+```
+
+# Plots
+
+```{r Plots}
+
+# Absolute value if wanted
+# dat.long$h.value = abs(dat.long$h.value)
+
+# Mean and 95% credible interval
+ci95 = dat.long |>
+  dplyr::group_by(data.version, h.target, strides) |>
+  dplyr::summarise(tmp = list(bayestestR::ci(h.value, ci = 0.95)),
+                   h.mean = mean(h.value, na.rm = TRUE),
+                   .groups = "drop") |>
+  tidyr::unnest_wider(tmp)
+
+ggplot(dat.long, aes(x = h.value, fill = data.version)) +
+  # Beautifying
+  theme_classic() +
+  scale_x_continuous(limits = c(-0.1, 0.1),
+                     breaks = seq(-0.1, 0.1, by = 0.05)) + 
+  geom_vline(xintercept = 0, color = "black", linewidth = 0.7) +
+  # Raw data
+  geom_density(alpha = 0.3, adjust = 1) +
+  # Mean lines
+  geom_vline(data = ci95,
+             aes(xintercept = h.mean, color = data.version),
+             linewidth = 0.8, linetype = "solid", show.legend = FALSE) +
+  # 95% credible interval bounds (dashed)
+  geom_vline(data = ci95,
+             aes(xintercept = CI_low, color = data.version),
+             linewidth = 0.8, linetype = "dashed", show.legend = FALSE) +
+  geom_vline(data = ci95,
+             aes(xintercept = CI_high, color = data.version),
+             linewidth = 0.8, linetype = "dashed", show.legend = FALSE) +
+  # More beautifying
+  scale_fill_manual(values = c("random.diff" = scales::alpha("blue", 0.1),
+                               "contiguous.diff" = scales::alpha("red", 0.1)),
+                    name = "Data Version",
+                    labels = c("Random", "Contiguous")) +
+  scale_color_manual(values = c("random.diff" = "blue",
+                                "contiguous.diff" = "red")) +
+  labs(x = "Difference from Original Hurst Exponent (Dropped - Original)",
+       y = "Density") +
+  facet_grid(rows = vars(h.target),
+             cols = vars(strides),
+             labeller = labeller(h.target = function(x) paste0("H = ", x),
+                                 strides = function(x) paste0(x, " Strides")),
+             axes = "all_x") +
+  theme(legend.position = "top")
+
+```
