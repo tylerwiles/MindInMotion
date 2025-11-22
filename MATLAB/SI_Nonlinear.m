@@ -167,7 +167,7 @@ parfor i = 1:length(my_folders)
 end
 my_files = vertcat(files{:});
 
-min_contacts = 101;
+min_contacts = 33;
 
 parfor i = 1:length(my_files)
 
@@ -202,10 +202,10 @@ parfor i = 1:length(my_files)
     contacts_left = find(strcmp(dat.type, 'LHS'));
     contacts_right = find(strcmp(dat.type, 'RHS'));
     contacts = sort([contacts_left; contacts_right], 'ascend');
-    contacts_latency = table2array(dat(contacts,1));
+    contacts_latency = table2array(dat(contacts_right,1));
 
     % If minimum number of contacts are not met then add NaN.
-    if length(contacts) < min_contacts
+    if length(contacts_right) < min_contacts
         hursts(i,:) = NaN;
         entropies(i,:) = NaN;
     else
