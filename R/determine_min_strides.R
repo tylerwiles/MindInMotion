@@ -21,6 +21,9 @@ dat = dat %>%
   pivot_wider(names_from  = measure,
               values_from = value)
 
+dat = dat[dat$treadmill == 'TM',]
+dat = dat[!duplicated(dat[, c("id", "treadmill", "speed", "terrain", "trial")]), ] # Ignore segments
+
 dat$speed = gsub("p", ".", dat$speed)
 
 dat$id = factor(dat$id)
@@ -39,6 +42,7 @@ hist(dat$n.contacts.left, breaks = 50)
 hist(dat$n.contacts.right, breaks = 50)
 hist(dat$n.contacts.diff, breaks = 50)
 
+nrow(dat[dat$n.contacts.total < 50, ])
 nrow(dat[dat$n.contacts < 50, ])
 
 
@@ -86,8 +90,25 @@ dat[dat$n.contacts >= 32, ] %>%
 
 
 
+dat[dat$n.contacts.total >= 32, ] %>%
+  group_by(segment, treadmill, id) %>%
+  summarise(min_contacts = min(n.contacts.total),
+            max_contacts = max(n.contacts.total),
+            .groups = "drop") %>%
+  group_by(segment, treadmill) %>%
+  summarise(mean_min_contacts = mean(min_contacts),
+            mean_max_contacts = mean(max_contacts),
+            .groups = "drop")
 
 
+
+
+
+ggplot(dat, aes(x = n.contacts.total, y = terrain, fill = terrain)) +
+  geom_density_ridges() +
+  labs(title = "Ridgeline Plot Example",
+       x = "Sepal Length",
+       y = "Species")
 
 
 

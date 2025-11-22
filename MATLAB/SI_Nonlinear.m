@@ -167,7 +167,7 @@ parfor i = 1:length(my_folders)
 end
 my_files = vertcat(files{:});
 
-min_contacts = 65;
+min_contacts = 101;
 
 parfor i = 1:length(my_files)
 
@@ -224,13 +224,13 @@ parfor i = 1:length(my_files)
         entropies(i,:) = entropy;
 
         % Plot/save stride intervals to check
-        % f = figure('Visible', 'off');
-        % plot(step_intervals);
-        % % ylim([1, 2]);
-        % save_name = sprintf('%s_%s_%s_%s.png', temp_id{6}, temp_id_condition{1}, temp_id_condition{2}, temp_id_condition{3});
-        % save_path = fullfile(output_directory, '\FIGURES\', save_name);
-        % saveas(f, save_path);
-        % close(f);
+        f = figure('Visible', 'off');
+        plot(step_intervals);
+        % ylim([1, 2]);
+        save_name = sprintf('%s_%s_%s_%s.png', temp_id{6}, temp_id_condition{1}, temp_id_condition{2}, temp_id_condition{3});
+        save_path = fullfile(output_directory, '\FIGURES\', save_name);
+        saveas(f, save_path);
+        close(f);
     end
 
 end
