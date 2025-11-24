@@ -33,6 +33,7 @@ library(ggplot2)
 library(readxl)
 
 dat = data.table::fread(here('DATA', 'MIM_Nonlinear_Results.csv'), header = TRUE)
+# dat = data.table::fread(here('DATA', 'MIM_Nonlinear_Results_Steps.csv'), header = TRUE)
 dat.demographics = as.data.table(read_excel(here("DATA", "MiM_Crunch_demographics_Chang.xlsx"), sheet = 2))
 dat.demographics = dat.demographics[ ,c(3,6:13)] # Remove unwanted columns
 
@@ -52,6 +53,9 @@ dat$handedness = ifelse(dat$handedness == 1, "right", "left")
 dat$sex = ifelse(dat$sex == 1, "male", "female")
 dat$speed = gsub("p", ".", dat$speed)
 
+dat$functioning = ifelse(dat$sppb < 10, "low.functioning", "high.functioning") # Low functioning defined as sppb < 10
+dat$group = ifelse(dat$age < 50, "young", "old") # young adults are less than 50 years old
+
 # Factor
 dat$id = factor(dat$id)
 dat$treadmill = factor(dat$treadmill)
@@ -61,6 +65,8 @@ dat$terrain = factor(dat$terrain,
 dat$trial = factor(dat$trial)
 dat$sex = factor(dat$sex)
 dat$handedness = factor(dat$handedness)
+dat$functioning = factor(dat$functioning)
+dat$group = factor(dat$group)
 
 ```
 
@@ -175,8 +181,93 @@ save(m0.tm.entropy, file = here::here("DATA", "m0.tm.entropy.RData"))
 
 dat.temp = dat[dat$treadmill == 'TM']
 
+dat.temp = dat.temp[dat.temp$group == 'old']
+
+dat.temp = dat.temp[complete.cases(dat.temp[, c("id", "treadmill", "speed", "terrain", "trial", "hurst", "functioning", "group")]), ]
+
 set.seed(9152025)
-BayesFactor::anovaBF(hurst ~ terrain * trial * group, data = dat.temp, whichRandom = 'id')
+
+# Is there an interaction between terrain and the functioning of older adults? No. Terrain main effect.
+BayesFactor::anovaBF(hurst ~ terrain * functioning, data = dat.temp, whichRandom = 'id', whichModels = 'withmain')
+
+# What are the differences between terrain? Flat is different than all the others.
+BayesFactor::ttestBF(x = dat.temp$hurst[dat.temp$terrain == 'flat'],
+                     y = dat.temp$hurst[dat.temp$terrain == 'low'],
+                     paired = FALSE)
+BayesFactor::ttestBF(x = dat.temp$hurst[dat.temp$terrain == 'flat'],
+                     y = dat.temp$hurst[dat.temp$terrain == 'med'],
+                     paired = FALSE)
+BayesFactor::ttestBF(x = dat.temp$hurst[dat.temp$terrain == 'flat'],
+                     y = dat.temp$hurst[dat.temp$terrain == 'high'],
+                     paired = FALSE)
+BayesFactor::ttestBF(x = dat.temp$hurst[dat.temp$terrain == 'low'],
+                     y = dat.temp$hurst[dat.temp$terrain == 'med'],
+                     paired = FALSE)
+BayesFactor::ttestBF(x = dat.temp$hurst[dat.temp$terrain == 'low'],
+                     y = dat.temp$hurst[dat.temp$terrain == 'high'],
+                     paired = FALSE)
+BayesFactor::ttestBF(x = dat.temp$hurst[dat.temp$terrain == 'med'],
+                     y = dat.temp$hurst[dat.temp$terrain == 'high'],
+                     paired = FALSE)
+
+# Is there an interaction between young adults and high functioning older adults? Yes.
+dat.temp = dat[dat$treadmill == 'TM']
+dat.temp = dat.temp[dat.temp$functioning == 'high.functioning']
+dat.temp = dat.temp[complete.cases(dat.temp[, c("id", "treadmill", "speed", "terrain", "trial", "hurst", "functioning", "group")]), ]
+BayesFactor::anovaBF(hurst ~ terrain * group, data = dat.temp, whichRandom = 'id', whichModels = 'withmain')
+
+# Holding age constant, what is the difference in terrain? Nothing
+BayesFactor::anovaBF(hurst ~ terrain, data = dat.temp[dat.temp$group == 'young'], whichRandom = 'id', whichModels = 'withmain')
+BayesFactor::anovaBF(hurst ~ terrain, data = dat.temp[dat.temp$group == 'old'], whichRandom = 'id', whichModels = 'withmain')
+
+BayesFactor::ttestBF(x = dat.temp$hurst[dat.temp$group == 'young' & dat.temp$terrain == 'flat'],
+                     y = dat.temp$hurst[dat.temp$group == 'old' & dat.temp$terrain == 'flat'],
+                     paired = FALSE)
+BayesFactor::ttestBF(x = dat.temp$hurst[dat.temp$group == 'young' & dat.temp$terrain == 'low'],
+                     y = dat.temp$hurst[dat.temp$group == 'old' & dat.temp$terrain == 'low'],
+                     paired = FALSE)
+BayesFactor::ttestBF(x = dat.temp$hurst[dat.temp$group == 'young' & dat.temp$terrain == 'med'],
+                     y = dat.temp$hurst[dat.temp$group == 'old' & dat.temp$terrain == 'med'],
+                     paired = FALSE)
+BayesFactor::ttestBF(x = dat.temp$hurst[dat.temp$group == 'young' & dat.temp$terrain == 'high'],
+                     y = dat.temp$hurst[dat.temp$group == 'old' & dat.temp$terrain == 'high'],
+                     paired = FALSE)
+dat.temp %>%
+  group_by(group, terrain) %>%
+  summarise(mu = format(round(mean(hurst, na.rm = TRUE), 2), nsmall = 2),
+            sds = format(round(sd(hurst, na.rm = TRUE), 2), nsmall = 2),
+            .groups = "drop")
+
+
+
+
+
+
+
+
+
+
+
+
+BF_Simple = function(dat, dv, label) {
+  BayesFactor::ttestBF(x = dat[[dv]][dat$label == age.group & dat$gender == 'male'],
+                       y = dat[[dv]][dat$label == age.group & dat$gender == 'female'],
+                       paired = FALSE)
+}
+
+
+
+# Are there interactions between terrain, functioning, and age group
+BayesFactor::anovaBF(hurst ~ terrain * functioning * group, data = dat.temp, whichRandom = 'id', whichModels = 'withmain')
+
+# Hold age group constant (we cannot investigate young adults only because they were always high functioning)
+BayesFactor::anovaBF(hurst ~ terrain * functioning, data = dat.temp[dat.temp$group == 'old'], whichRandom = 'id', whichModels = 'withmain')
+
+# But we can investigate young adults and older adults who are high functioning
+BayesFactor::anovaBF(hurst ~ terrain * functioning, data = dat.temp[dat.temp$group == 'young' & dat.temp$functioning == 'high.functioning'], whichRandom = 'id', whichModels = 'withmain')
+
+# Hold Age group constant
+BayesFactor::anovaBF(hurst ~ terrain * trial, data = dat.temp[dat$group == 'young'], whichRandom = 'id', whichModels = 'withmain')
 
 # Split by group
 BayesFactor::anovaBF(hurst ~ terrain * trial, data = dat.temp[dat.temp$group == 'healthy'], whichRandom = 'id')
