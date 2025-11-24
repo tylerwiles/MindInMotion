@@ -60,6 +60,8 @@ dat.long$strides.new.length = dat.long$strides.new.length
 dat.long$h.target = factor(dat.long$h.target, levels = rev(levels(factor(dat.long$h.target))))
 dat.long$data.version = factor(dat.long$data.version)
 
+dat.long$h.value.abs = abs(dat.long$h.value)
+
 ```
 
 # BFTests
@@ -68,59 +70,107 @@ dat.long$data.version = factor(dat.long$data.version)
 
 library(BayesFactor)
 
-BayesFactor::anovaBF(h.value ~ strides * drops, data = dat.long)
+BayesFactor::anovaBF(h.value.abs ~ strides * drops, data = dat.long)
 
-m0 = aov(h.value ~ strides * drops * data.version * h.target, data = dat.long)
+m0 = aov(h.value.abs ~ strides * drops * data.version * h.target, data = dat.long)
 summary(m0)
 
-m0 = lme4::lmer(h.value ~ strides * drops * data.version + (1 | id), data = dat.long)
+m0 = lme4::lmer(h.value.abs ~ strides * drops * data.version + (1 | id), data = dat.long)
 summary(m0)
 
-t.test(dat.long$h.value)
+t.test(dat.long$h.value.abs)
 
 ```
 
 # Plots
 
-```{r Plots}
+## Relative
 
-# Absolute value if wanted
-# dat.long$h.value = abs(dat.long$h.value)
+```{r Relative}
 
-# Mean and 95% credible interval
 ci95 = dat.long |>
-  dplyr::group_by(data.version, h.target, strides) |>
-  dplyr::summarise(tmp = list(bayestestR::ci(h.value, ci = 0.95)),
-                   h.mean = mean(h.value, na.rm = TRUE),
-                   .groups = "drop") |>
-  tidyr::unnest_wider(tmp)
+  dplyr::group_by(data.version, h.target, strides, drops) |>
+  dplyr::summarise(h.mean = mean(h.value, na.rm = TRUE),
+                   h.median = median(h.value, na.rm = TRUE),
+                   .groups = "drop")
+
+# Define line types that get more dashed with larger drops
+linetypes = c("solid", "88", "66", "44", "22", "11")
+linetype_map = setNames(rep(linetypes, length.out = length(unique(dat.long$drops))),
+                        sort(unique(dat.long$drops)))
 
 ggplot(dat.long, aes(x = h.value, fill = data.version)) +
   # Beautifying
   theme_classic() +
-  scale_x_continuous(limits = c(-0.1, 0.1),
-                     breaks = seq(-0.1, 0.1, by = 0.05)) + 
-  geom_vline(xintercept = 0, color = "black", linewidth = 0.7) +
+  scale_x_continuous(limits = c(-0.15, 0.15),
+                     breaks = c(-0.15, -0.10, -0.05, 0, 0.05, 0.10, 0.15)) +
   # Raw data
-  geom_density(alpha = 0.3, adjust = 1) +
-  # Mean lines
-  geom_vline(data = ci95,
-             aes(xintercept = h.mean, color = data.version),
-             linewidth = 0.8, linetype = "solid", show.legend = FALSE) +
-  # 95% credible interval bounds (dashed)
-  geom_vline(data = ci95,
-             aes(xintercept = CI_low, color = data.version),
-             linewidth = 0.8, linetype = "dashed", show.legend = FALSE) +
-  geom_vline(data = ci95,
-             aes(xintercept = CI_high, color = data.version),
-             linewidth = 0.8, linetype = "dashed", show.legend = FALSE) +
+  geom_density(alpha = 0.3, adjust = 1, show.legend = TRUE) +
+  # Mean lines with varying dash intensity by drops
+  geom_vline(data = ci95, aes(xintercept = h.mean,
+                              color = data.version,
+                              linetype = factor(drops)),
+             linewidth = 0.8,
+             show.legend = TRUE) +
+  scale_linetype_manual(values = linetype_map,
+                        name = "Dropped Data (%)") +
   # More beautifying
-  scale_fill_manual(values = c("random.diff" = scales::alpha("blue", 0.1),
-                               "contiguous.diff" = scales::alpha("red", 0.1)),
+  scale_fill_manual(values = c("random.diff" = scales::alpha("#0021A5", 0.1),
+                               "contiguous.diff" = scales::alpha("#FA4616", 0.1)),
                     name = "Data Version",
                     labels = c("Random", "Contiguous")) +
-  scale_color_manual(values = c("random.diff" = "blue",
-                                "contiguous.diff" = "red")) +
+  scale_color_manual(values = c("random.diff" = "#0021A5",
+                                "contiguous.diff" = "#FA4616"),
+                     guide = "none") +
+  labs(x = "Difference from Original Hurst Exponent (Dropped - Original)",
+       y = "Density") +
+  facet_grid(rows = vars(h.target),
+             cols = vars(strides),
+             labeller = labeller(h.target = function(x) paste0("H = ", x),
+                                 strides = function(x) paste0(x, " Strides")),
+             axes = "all_x") +
+  theme(legend.position = "top")
+
+```
+
+## Absolute
+
+```{r Absolute}
+
+ci95 = dat.long |>
+  dplyr::group_by(data.version, h.target, strides, drops) |>
+  dplyr::summarise(h.mean = mean(h.value, na.rm = TRUE),
+                   h.median = median(h.value, na.rm = TRUE),
+                   .groups = "drop")
+
+# Define line types that get more dashed with larger drops
+linetypes = c("solid", "88", "66", "44", "22", "11")
+linetype_map = setNames(rep(linetypes, length.out = length(unique(dat.long$drops))),
+                        sort(unique(dat.long$drops)))
+
+ggplot(dat.long, aes(x = h.value, fill = data.version)) +
+  # Beautifying
+  theme_classic() +
+  scale_x_continuous(limits = c(0, 0.15),
+                     breaks = c(0, 0.05, 0.10, 0.15)) +
+  # Raw data
+  geom_density(alpha = 0.3, adjust = 1, show.legend = TRUE) +
+  # Mean lines with varying dash intensity by drops
+  geom_vline(data = ci95, aes(xintercept = h.mean,
+                              color = data.version,
+                              linetype = factor(drops)),
+             linewidth = 0.8,
+             show.legend = TRUE) +
+  scale_linetype_manual(values = linetype_map,
+                        name = "Dropped Data (%)") +
+  # More beautifying
+  scale_fill_manual(values = c("random.diff" = scales::alpha("#0021A5", 0.1),
+                               "contiguous.diff" = scales::alpha("#FA4616", 0.1)),
+                    name = "Data Version",
+                    labels = c("Random", "Contiguous")) +
+  scale_color_manual(values = c("random.diff" = "#0021A5",
+                                "contiguous.diff" = "#FA4616"),
+                     guide = "none") +
   labs(x = "Difference from Original Hurst Exponent (Dropped - Original)",
        y = "Density") +
   facet_grid(rows = vars(h.target),
