@@ -43,7 +43,6 @@ output_directory = 'C:\Users\twiles\Desktop\Github-Repositories\MindInMotion\DAT
 my_folders = dir(fullfile(my_directory, 'H*'));
 my_folders = [my_folders; dir(fullfile(my_directory, 'NH*'))];
 my_folders = my_folders(~contains({my_folders.name}, '_')); % Remove *_FU, _Airram, etc
-my_files = [];
 files = cell(length(my_folders),1);
 parfor i = 1:length(my_folders)
     disp(['Pulling: ', my_folders(i).name])
@@ -154,7 +153,6 @@ output_directory = 'C:\Users\twiles\Desktop\Github-Repositories\MindInMotion\DAT
 my_folders = dir(fullfile(my_directory, 'H*'));
 my_folders = [my_folders; dir(fullfile(my_directory, 'NH*'))];
 my_folders = my_folders(~contains({my_folders.name}, '_')); % Remove *_FU, _Airram, etc
-my_files = [];
 files = cell(length(my_folders),1);
 parfor i = 1:length(my_folders)
     disp(['Pulling: ', my_folders(i).name])
@@ -166,8 +164,9 @@ parfor i = 1:length(my_folders)
     files{i} = [files_s; files_t];
 end
 my_files = vertcat(files{:});
+my_files(1404,:) = []; % No data for this trial?
 
-min_contacts = 33;
+min_contacts = 51;
 
 parfor i = 1:length(my_files)
 
@@ -201,41 +200,47 @@ parfor i = 1:length(my_files)
     % Find left and right heel contacts
     contacts_left = find(strcmp(dat.type, 'LHS'));
     contacts_right = find(strcmp(dat.type, 'RHS'));
-    contacts = sort([contacts_left; contacts_right], 'ascend');
+    % contacts = sort([contacts_left; contacts_right], 'ascend');
     contacts_latency = table2array(dat(contacts_right,1));
 
     % If minimum number of contacts are not met then add NaN.
     if length(contacts_right) < min_contacts
         hursts(i,:) = NaN;
         entropies(i,:) = NaN;
+        intervals_mean(i,:) = NaN;
+        intervals_sd(i,:) = NaN;
     else
         % contacts_latency = contacts_latency(1:min_contacts); % Cut to first # of minimum strides
         contacts_latency = contacts_latency(max(1, numel(contacts_latency) - min_contacts + 1):end); % Cut to last # of minimum strides
 
-        % Calculate step intervals
-        step_intervals = diff(contacts_latency)/dat_temp.srate;
+        % Calculate step or stride intervals
+        intervals = diff(contacts_latency)/dat_temp.srate;
 
         % Hurst Exponent
-        hurst = median(bayesH(step_intervals, 200));
+        hurst = median(bayesH(intervals, 200));
         hursts(i,:) = hurst;
 
         % Entropy
-        entropy = Samp_En(step_intervals, 2 , 0.25, std(step_intervals));
+        entropy = Samp_En(intervals, 2 , 0.25, std(intervals));
         entropies(i,:) = entropy;
 
         % Plot/save stride intervals to check
         f = figure('Visible', 'off');
-        plot(step_intervals);
+        plot(intervals);
         % ylim([1, 2]);
         save_name = sprintf('%s_%s_%s_%s.png', temp_id{6}, temp_id_condition{1}, temp_id_condition{2}, temp_id_condition{3});
         save_path = fullfile(output_directory, '\FIGURES\', save_name);
         saveas(f, save_path);
         close(f);
+
+        intervals_mean(i,:) = mean(intervals);
+        intervals_sd(i,:) = std(intervals);
+
     end
 
 end
 
 % Export
-mim_results = table(id, treadmill, speed, terrain, trial, hursts, entropies, ...
-    'VariableNames', {'id', 'treadmill', 'speed', 'terrain', 'trial', 'hurst', 'entropy'});
+mim_results = table(id, treadmill, speed, terrain, trial, hursts, entropies, intervals_mean, intervals_sd, ...
+    'VariableNames', {'id', 'treadmill', 'speed', 'terrain', 'trial', 'hurst', 'entropy', 'intervals.mean', 'intervals.sd'});
 writetable(mim_results, fullfile(output_directory, 'MIM_Nonlinear_Results.csv'));
