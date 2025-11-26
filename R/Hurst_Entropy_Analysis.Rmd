@@ -14,6 +14,7 @@ Description
 Need to investigate why some entropies are NaN
 High condition has different behavior between trials 1 & 2?????
 Why is trial 2 so different from trial 1?
+Need to deal with NaN entropies
 
 # Libraries and Data Management
 
@@ -67,6 +68,92 @@ dat$sex = factor(dat$sex)
 dat$handedness = factor(dat$handedness)
 dat$functioning = factor(dat$functioning)
 dat$group = factor(dat$group)
+
+```
+
+# WCB 2026 Abstract
+
+```{r WCB 2026 Abstract}
+
+
+
+dat = dat[dat$group == 'old' & dat$treadmill == 'TM']
+
+dat = dat[complete.cases(dat[, c("id", "treadmill", "speed", "terrain", "trial", "hurst", "entropy", "functioning", "group")]), ]
+
+table(dat$functioning[!duplicated(dat$id)])
+
+# Is there an interaction between terrain and the functioning of older adults? No. Terrain main effect.
+BayesFactor::anovaBF(hurst ~ terrain * functioning, data = dat, whichRandom = 'id', whichModels = 'withmain')
+
+BayesFactor::anovaBF(hurst ~ terrain, data = dat[dat$functioning == 'high.functioning'], whichRandom = 'id', whichModels = 'withmain')
+BayesFactor::anovaBF(hurst ~ terrain, data = dat[dat$functioning == 'low.functioning'], whichRandom = 'id', whichModels = 'withmain')
+
+# What are the differences between terrain? Flat is different than all the others.
+BayesFactor::ttestBF(x = dat$hurst[dat$terrain == 'flat' & dat$functioning == 'low.functioning'],
+                     y = dat$hurst[dat$terrain == 'low' & dat$functioning == 'low.functioning'],
+                     paired = FALSE)
+BayesFactor::ttestBF(x = dat$hurst[dat$terrain == 'flat' & dat$functioning == 'low.functioning'],
+                     y = dat$hurst[dat$terrain == 'med' & dat$functioning == 'low.functioning'],
+                     paired = FALSE)
+BayesFactor::ttestBF(x = dat$hurst[dat$terrain == 'flat' & dat$functioning == 'low.functioning'],
+                     y = dat$hurst[dat$terrain == 'high' & dat$functioning == 'low.functioning'],
+                     paired = FALSE)
+BayesFactor::ttestBF(x = dat$hurst[dat$terrain == 'low' & dat$functioning == 'low.functioning'],
+                     y = dat$hurst[dat$terrain == 'med' & dat$functioning == 'low.functioning'],
+                     paired = FALSE)
+BayesFactor::ttestBF(x = dat$hurst[dat$terrain == 'low' & dat$functioning == 'low.functioning'],
+                     y = dat$hurst[dat$terrain == 'high' & dat$functioning == 'low.functioning'],
+                     paired = FALSE)
+BayesFactor::ttestBF(x = dat$hurst[dat$terrain == 'med' & dat$functioning == 'low.functioning'],
+                     y = dat$hurst[dat$terrain == 'high' & dat$functioning == 'low.functioning'],
+                     paired = FALSE)
+
+
+BayesFactor::ttestBF(x = dat$hurst[dat$terrain == 'flat' & dat$functioning == 'high.functioning'],
+                     y = dat$hurst[dat$terrain == 'low' & dat$functioning == 'high.functioning'],
+                     paired = FALSE)
+BayesFactor::ttestBF(x = dat$hurst[dat$terrain == 'flat' & dat$functioning == 'high.functioning'],
+                     y = dat$hurst[dat$terrain == 'med' & dat$functioning == 'high.functioning'],
+                     paired = FALSE)
+BayesFactor::ttestBF(x = dat$hurst[dat$terrain == 'flat' & dat$functioning == 'high.functioning'],
+                     y = dat$hurst[dat$terrain == 'high' & dat$functioning == 'high.functioning'],
+                     paired = FALSE)
+BayesFactor::ttestBF(x = dat$hurst[dat$terrain == 'low' & dat$functioning == 'high.functioning'],
+                     y = dat$hurst[dat$terrain == 'med' & dat$functioning == 'high.functioning'],
+                     paired = FALSE)
+BayesFactor::ttestBF(x = dat$hurst[dat$terrain == 'low' & dat$functioning == 'high.functioning'],
+                     y = dat$hurst[dat$terrain == 'high' & dat$functioning == 'high.functioning'],
+                     paired = FALSE)
+BayesFactor::ttestBF(x = dat$hurst[dat$terrain == 'med' & dat$functioning == 'high.functioning'],
+                     y = dat$hurst[dat$terrain == 'high' & dat$functioning == 'high.functioning'],
+                     paired = FALSE)
+
+
+BayesFactor::anovaBF(entropy ~ terrain * functioning, data = dat, whichRandom = 'id', whichModels = 'withmain')
+
+BayesFactor::anovaBF(entropy ~ terrain, data = dat[dat$functioning == 'high.functioning'], whichRandom = 'id', whichModels = 'withmain')
+BayesFactor::anovaBF(entropy ~ terrain, data = dat[dat$functioning == 'low.functioning'], whichRandom = 'id', whichModels = 'withmain')
+
+# What are the differences between terrain? Flat is different than all the others.
+BayesFactor::ttestBF(x = dat$entropy[dat$terrain == 'flat' & dat$functioning == 'low.functioning'],
+                     y = dat$entropy[dat$terrain == 'low' & dat$functioning == 'low.functioning'],
+                     paired = FALSE)
+BayesFactor::ttestBF(x = dat$entropy[dat$terrain == 'flat' & dat$functioning == 'low.functioning'],
+                     y = dat$entropy[dat$terrain == 'med' & dat$functioning == 'low.functioning'],
+                     paired = FALSE)
+BayesFactor::ttestBF(x = dat$entropy[dat$terrain == 'flat' & dat$functioning == 'low.functioning'],
+                     y = dat$entropy[dat$terrain == 'high' & dat$functioning == 'low.functioning'],
+                     paired = FALSE)
+BayesFactor::ttestBF(x = dat$entropy[dat$terrain == 'low' & dat$functioning == 'low.functioning'],
+                     y = dat$entropy[dat$terrain == 'med' & dat$functioning == 'low.functioning'],
+                     paired = FALSE)
+BayesFactor::ttestBF(x = dat$entropy[dat$terrain == 'low' & dat$functioning == 'low.functioning'],
+                     y = dat$entropy[dat$terrain == 'high' & dat$functioning == 'low.functioning'],
+                     paired = FALSE)
+BayesFactor::ttestBF(x = dat$entropy[dat$terrain == 'med' & dat$functioning == 'low.functioning'],
+                     y = dat$entropy[dat$terrain == 'high' & dat$functioning == 'low.functioning'],
+                     paired = FALSE)
 
 ```
 
@@ -329,7 +416,7 @@ cis = dat.temp %>%
   summarise(hurst.mean = mean(hurst),
             hurst.ci.lower = bayestestR::ci(hurst, ci = 0.95)$CI_low,
             hurst.ci.upper = bayestestR::ci(hurst, ci = 0.95)$CI_high,
-            entropy.mean = mean(entropy),
+            entropy.mean = mean(entropy, na.rm = TRUE),
             entropy.ci.lower = bayestestR::ci(entropy, ci = 0.95)$CI_low,
             entropy.ci.upper = bayestestR::ci(entropy, ci = 0.95)$CI_high)
 
@@ -415,7 +502,7 @@ cis = dat.temp %>%
   summarise(hurst.mean = mean(hurst),
             hurst.ci.lower = bayestestR::ci(hurst, ci = 0.95)$CI_low,
             hurst.ci.upper = bayestestR::ci(hurst, ci = 0.95)$CI_high,
-            entropy.mean = mean(entropy),
+            entropy.mean = mean(entropy, na.rm = TRUE),
             entropy.ci.lower = bayestestR::ci(entropy, ci = 0.95)$CI_low,
             entropy.ci.upper = bayestestR::ci(entropy, ci = 0.95)$CI_high)
 
