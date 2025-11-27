@@ -17,18 +17,14 @@ library(RcppArmadillo)
 
 # Sweep Setup -----------------------------------------------------------------------
 
-# Step interval mean and standard deviation from Gaitprint
-si.mean = 0.52
-si.sd = 0.07
+# Stride interval mean and standard deviation from Gaitprint
+si.mean = 1.05
+si.sd = 0.09
 
 # Create a list of parameter sweeps
 strides = seq(50, 200, 50)
 drops = seq(0.02, .1, 0.02)
-h.target = seq(0.7, 0.9, 0.1)
-# For Testing
-# strides = seq(32, 97, 32)
-# drops = seq(0.05, .15, 0.05)
-# h.target = c(seq(0.5, 0.6, 0.1), 0.999)
+h.target = c(seq(0.1, 0.9, 0.1), 0.999)
 
 params = expand.grid(strides = strides,
                      drops = drops,
@@ -82,8 +78,8 @@ clusterEvalQ(cl, {
     library(RcppArmadillo)
   })
   source(r_path)  # fgn_sim.R
-  Rcpp::sourceCpp(cpp_path,    rebuild = TRUE, showOutput = FALSE, verbose = FALSE)  # bayesH.cpp
-  Rcpp::sourceCpp(sampen_path, rebuild = TRUE, showOutput = FALSE, verbose = FALSE)  # Ent_Samp.cpp
+  Rcpp::sourceCpp(cpp_path,    rebuild = TRUE, showOutput = FALSE, verbose = FALSE) # bayesH.cpp
+  Rcpp::sourceCpp(sampen_path, rebuild = TRUE, showOutput = FALSE, verbose = FALSE) # Ent_Samp.cpp
   TRUE
 })
 print('done 6')
