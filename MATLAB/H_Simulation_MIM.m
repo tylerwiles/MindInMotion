@@ -32,7 +32,7 @@ parfor i = 1:length(my_folders)
     files{i} = files_s;
 end
 my_files = vertcat(files{:});
-my_files(1404,:) = []; % No data for this trial?
+my_files(strcmp({my_files.name}, 'TM_low_2.set') & strcmp({my_files.folder}, 'R:\Ferris-Lab\share\MindInMotion\Data\NH3027\EEG\Trials')) = []; % No data for this trial?
 
 min_contacts = 51;
 

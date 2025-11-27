@@ -54,7 +54,7 @@ parfor i = 1:length(my_folders)
     files{i} = [files_s; files_t];
 end
 my_files = vertcat(files{:});
-my_files(1404,:) = []; % No data for this trial?
+my_files(strcmp({my_files.name}, 'TM_low_2.set') & strcmp({my_files.folder}, 'R:\Ferris-Lab\share\MindInMotion\Data\NH3027\EEG\Trials')) = []; % No data for this trial?
 
 parfor i = 1:length(my_files)
 
@@ -164,7 +164,7 @@ parfor i = 1:length(my_folders)
     files{i} = [files_s; files_t];
 end
 my_files = vertcat(files{:});
-my_files(1404,:) = []; % No data for this trial?
+my_files(strcmp({my_files.name}, 'TM_low_2.set') & strcmp({my_files.folder}, 'R:\Ferris-Lab\share\MindInMotion\Data\NH3027\EEG\Trials')) = []; % No data for this trial?
 
 min_contacts = 51;
 
@@ -216,6 +216,16 @@ parfor i = 1:length(my_files)
         % Calculate step or stride intervals
         intervals = diff(contacts_latency)/dat_temp.srate;
 
+        % Remove intervals that are greater/lower than three standard
+        % deviations from the mean. Record number of dropped intervals
+        intervals_length_original = numel(intervals);
+        intervals_mean = mean(intervals);
+        intervals_sd = std(intervals);
+        intervals_thresh_upper = intervals_mean + 3 * intervals_sd;
+        intervals_thresh_lower = intervals_mean - 3 * intervals_sd;
+        intervals = intervals(intervals >= intervals_thresh_lower & intervals <= intervals_thresh_upper);
+        intervals_dropped(i,:) = intervals_length_original - numel(intervals);
+
         % Hurst Exponent
         hurst = median(bayesH(intervals, 200));
         hursts(i,:) = hurst;
@@ -233,14 +243,11 @@ parfor i = 1:length(my_files)
         saveas(f, save_path);
         close(f);
 
-        intervals_mean(i,:) = mean(intervals);
-        intervals_sd(i,:) = std(intervals);
-
     end
 
 end
 
 % Export
-mim_results = table(id, treadmill, speed, terrain, trial, hursts, entropies, intervals_mean, intervals_sd, ...
-    'VariableNames', {'id', 'treadmill', 'speed', 'terrain', 'trial', 'hurst', 'entropy', 'intervals.mean', 'intervals.sd'});
+mim_results = table(id, treadmill, speed, terrain, trial, hursts, entropies, intervals_dropped, ...
+    'VariableNames', {'id', 'treadmill', 'speed', 'terrain', 'trial', 'hurst', 'entropy', 'n.intervals.dropped'});
 writetable(mim_results, fullfile(output_directory, 'MIM_Nonlinear_Results.csv'));
