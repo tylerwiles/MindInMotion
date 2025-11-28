@@ -91,6 +91,7 @@ parfor i = 1:length(my_files)
         intervals_thresh_lower = intervals_mean - 3 * intervals_sd;
         intervals = intervals(intervals >= intervals_thresh_lower & intervals <= intervals_thresh_upper);
         intervals_dropped(i,:) = intervals_length_original - numel(intervals);
+        pct_dropped_timeseries(i,:) =  (numel(intervals) / numel(intervals_length_original)) * 100;
 
         % Hurst Exponent
         hurst = median(bayesH(intervals, 200));
@@ -114,6 +115,6 @@ parfor i = 1:length(my_files)
 end
 
 % Export
-mim_results = table(id, treadmill, speed, terrain, trial, hursts, entropies, intervals_dropped, ...
-    'VariableNames', {'id', 'treadmill', 'speed', 'terrain', 'trial', 'hurst', 'entropy', 'n.intervals.dropped'});
+mim_results = table(id, treadmill, speed, terrain, trial, hursts, entropies, intervals_dropped, pct_dropped_timeseries, ...
+    'VariableNames', {'id', 'treadmill', 'speed', 'terrain', 'trial', 'hurst', 'entropy', 'n.intervals.dropped', 'pct.timeseries.dropped'});
 writetable(mim_results, fullfile(output_directory, 'H_Simulation_MIM_Results.csv'));
