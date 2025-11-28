@@ -11,9 +11,11 @@ knitr::opts_chunk$set(echo = TRUE)
 
 Description
 
+# Simulation
 
+Analysis of data obtained from our simulations
 
-# Libraries and Data Management
+## Libraries and Data Management
 
 ```{r Libraries and Data Management}
 
@@ -25,7 +27,7 @@ library(here)
 library(ggplot2)
 library(ggridges)
 
-files = list.files(path = here::here('DATA', 'H_Simulation'), pattern = "^H_S.*\\.csv$", full.names = TRUE)
+files = list.files(path = here::here('DATA', 'H_Simulation'), pattern = "^H_Simulation[0-9]+(_[0-9]+)?\\.csv$", full.names = TRUE)
 dat = rbindlist(lapply(files, data.table::fread))
 dat = dat[ ,-1]
 
@@ -34,12 +36,6 @@ setnames(dat, old = c('h.original', 'h.test.random', 'h.test.contiguous'),
 
 dat$random.diff = dat$random - dat$original
 dat$contiguous.diff = dat$contiguous - dat$original
-
-# If I want to do anything with the raw data
-# dat.long = melt(dat,
-#                 measure.vars = c('original', 'random', 'contiguous'),
-#                 variable.name = "data.version",
-#                 value.name   = "h.value")
 
 dat.long = melt(dat,
                 measure.vars = tail(names(dat), 5),
@@ -64,27 +60,93 @@ dat.long$h.value.abs = abs(dat.long$h.value)
 
 ```
 
-# BFTests
+## BFTests
+
+Using Bayesian ttests, is H obtained from the dropped time series different from zero?
 
 ```{r BFTests}
 
+library(dplyr)
 library(BayesFactor)
 
-BayesFactor::anovaBF(h.value.abs ~ strides * drops, data = dat.long)
+bf.abs = dat.long %>%
+  group_by(h.target, strides, drops, data.version) %>%
+  summarise(BF10 = BayesFactor::extractBF(BayesFactor::ttestBF(x = h.value.abs, mu = 0))$bf,
+            .groups = "drop")
 
-m0 = aov(h.value.abs ~ strides * drops * data.version * h.target, data = dat.long)
-summary(m0)
+bf.rel = dat.long %>%
+  group_by(h.target, strides, drops, data.version) %>%
+  summarise(BF10 = BayesFactor::extractBF(BayesFactor::ttestBF(x = h.value, mu = 0))$bf,
+            .groups = "drop")
 
-m0 = lme4::lmer(h.value.abs ~ strides * drops * data.version + (1 | id), data = dat.long)
-summary(m0)
+# Takes too long to finish
+BayesFactor::anovaBF(h.value ~ strides * drops * data.version, data = dat.long)
+BayesFactor::anovaBF(h.value ~ strides * drops * data.version, data = dat.long)
 
-t.test(dat.long$h.value.abs)
+
+
+
+bf.abs.summary <- bf.rel[bf.rel$data.version == 'random.diff',] %>%
+  mutate(BF_gt_100 = BF10 > 100) %>%
+  group_by(h.target, strides, drops, data.version) %>%
+  summarise(n_BF_gt_100 = sum(BF_gt_100),
+            .groups = "drop")
+bf.abs.summary
 
 ```
 
-# Plots
+## Plots
 
-## Relative
+### Absolute
+
+```{r Absolute}
+
+ci95 = dat.long |>
+  dplyr::group_by(data.version, h.target, strides, drops) |>
+  dplyr::summarise(h.mean = mean(h.value.abs, na.rm = TRUE),
+                   h.median = median(h.value.abs, na.rm = TRUE),
+                   .groups = "drop")
+
+# Define line types that get more dashed with larger drops
+linetypes = c("solid", "88", "66", "44", "22", "11")
+linetype_map = setNames(rep(linetypes, length.out = length(unique(dat.long$drops))),
+                        sort(unique(dat.long$drops)))
+
+ggplot(dat.long, aes(x = h.value.abs, fill = data.version)) +
+  # Beautifying
+  theme_classic() +
+  scale_x_continuous(limits = c(0, 0.15),
+                     breaks = c(0, 0.05, 0.10, 0.15)) +
+  # Raw data
+  geom_density(alpha = 0.3, adjust = 1, show.legend = TRUE) +
+  # Mean lines with varying dash intensity by drops
+  geom_vline(data = ci95, aes(xintercept = h.mean,
+                              color = data.version,
+                              linetype = factor(drops)),
+             linewidth = 0.8,
+             show.legend = TRUE) +
+  scale_linetype_manual(values = linetype_map,
+                        name = "Dropped Data (%)") +
+  # More beautifying
+  scale_fill_manual(values = c("random.diff" = scales::alpha("#FA4616", 0.1),
+                               "contiguous.diff" = scales::alpha("#0021A5", 0.1)),
+                    name = "Data Version",
+                    labels = c("Random", "Contiguous")) +
+  scale_color_manual(values = c("random.diff" = "#FA4616",
+                                "contiguous.diff" = "#0021A5"),
+                     guide = "none") +
+  labs(x = "Difference from Original Hurst Exponent (Dropped - Original)",
+       y = "Density") +
+  facet_grid(rows = vars(h.target),
+             cols = vars(strides),
+             labeller = labeller(h.target = function(x) paste0("H = ", x),
+                                 strides = function(x) paste0(x, " Strides")),
+             axes = "all_x") +
+  theme(legend.position = "top")
+
+```
+
+### Relative
 
 ```{r Relative}
 
@@ -115,12 +177,12 @@ ggplot(dat.long, aes(x = h.value, fill = data.version)) +
   scale_linetype_manual(values = linetype_map,
                         name = "Dropped Data (%)") +
   # More beautifying
-  scale_fill_manual(values = c("random.diff" = scales::alpha("#0021A5", 0.1),
-                               "contiguous.diff" = scales::alpha("#FA4616", 0.1)),
+  scale_fill_manual(values = c("random.diff" = scales::alpha("#FA4616", 0.1),
+                               "contiguous.diff" = scales::alpha("#0021A5", 0.1)),
                     name = "Data Version",
                     labels = c("Random", "Contiguous")) +
-  scale_color_manual(values = c("random.diff" = "#0021A5",
-                                "contiguous.diff" = "#FA4616"),
+  scale_color_manual(values = c("random.diff" = "#FA4616",
+                                "contiguous.diff" = "#0021A5"),
                      guide = "none") +
   labs(x = "Difference from Original Hurst Exponent (Dropped - Original)",
        y = "Density") +
@@ -133,14 +195,159 @@ ggplot(dat.long, aes(x = h.value, fill = data.version)) +
 
 ```
 
-## Absolute
+# Gaitprint
+
+Analysis of data obtained from Gaitprint
+
+## Libraries and Data Management
+
+```{r Libraries and Data Management}
+
+options(scipen = 999)
+rm(list=ls())
+
+library(data.table)
+library(here)
+library(ggplot2)
+library(ggridges)
+
+dat = data.table::fread(here::here('DATA', 'H_Simulation', 'H_Simulation_Gaitprint_Results.csv'))
+
+setnames(dat, old = c('id.condition', 'h.original', 'h.random', 'h.contiguous'),
+         new = c('id', 'original', 'random', 'contiguous'))
+
+dat$random.diff = dat$random - dat$original
+dat$contiguous.diff = dat$contiguous - dat$original
+
+dat.long = melt(dat,
+                measure.vars = tail(names(dat), 5),
+                variable.name = "data.version",
+                value.name   = "h.value")
+
+# Easier to see/compare results with the differences rather than raw values
+dat.long = dat.long[!(dat.long$data.version %in% c('original', 'random', 'contiguous')), ]
+
+dat.long$drops = dat.long$drops * 100 # Change to percent
+
+# Factors
+dat.long$id = factor(dat.long$id)
+# dat.long$strides = factor(dat.long$strides)
+dat.long$drops = factor(dat.long$drops)
+dat.long$strides.cut = factor(dat.long$strides.cut)
+dat.long$strides.new.length = dat.long$strides.new.length
+dat.long$data.version = factor(dat.long$data.version)
+
+dat.long$h.value.abs = abs(dat.long$h.value)
+
+```
+
+## BFTests
+
+Using Bayesian ttests, is H obtained from the dropped time series different from zero?
+
+```{r BFTests}
+
+library(dplyr)
+library(BayesFactor)
+
+bf.abs = dat.long %>%
+  group_by(drops, data.version) %>%
+  summarise(BF10 = BayesFactor::extractBF(BayesFactor::ttestBF(x = h.value.abs, mu = 0))$bf,
+            .groups = "drop")
+
+bf.rel = dat.long %>%
+  group_by(drops, data.version) %>%
+  summarise(BF10 = BayesFactor::extractBF(BayesFactor::ttestBF(x = h.value, mu = 0))$bf,
+            .groups = "drop")
+
+
+
+
+BayesFactor::anovaBF(h.value ~ drops * data.version, data = dat.long)
+BayesFactor::anovaBF(h.value.abs ~ drops * data.version, data = dat.long)
+BayesFactor::ttestBF(x = dat.long$h.value.abs[dat.long$data.version == 'random.diff' & dat.long$drops == '2'],
+                     y = dat.long$h.value.abs[dat.long$data.version == 'random.diff' & dat.long$drops == '4'],
+                     paired = FALSE)
+BayesFactor::ttestBF(x = dat.long$h.value.abs[dat.long$data.version == 'random.diff' & dat.long$drops == '2'],
+                     y = dat.long$h.value.abs[dat.long$data.version == 'random.diff' & dat.long$drops == '6'],
+                     paired = FALSE)
+
+
+
+
+```
+
+```{r lm}
+
+m0 = lm(h.value.abs ~ 1 + drops * strides + data.version, data = dat.long)
+summary(m0)
+
+
+
+plot(dat.long$strides, dat.long$h.value.abs)
+plot(dat.long$strides, dat.long$h.value)
+
+
+
+m0 = lm(h.value.abs ~ 1 + drops * strides + data.version, data = dat.long)
+summary(m0)
+library(emmeans)
+emm <- emmeans(m0, ~ data.version)
+emm
+contrast(emm, method = "eff")   # tests each level against zero
+
+
+
+
+
+
+
+```
+
+
+```{r brms}
+
+library(brms)
+library(cmdstanr)
+
+m0 = brms::brm(h.value.abs ~ strides * drops * data.version,
+               data = dat.long,
+               cores = parallel::detectCores(),
+               chains = 4,
+               iter = 3000,
+               threads = threading(4),
+               backend = 'cmdstanr',
+               stan_model_args = list(stanc_options = list('O1')),
+               seed = 4172015,
+               refresh = 1000)
+
+
+
+
+
+print(summary(m3), digits = 5)
+
+loo(m1, m2, m3, compare = TRUE)
+
+save(m1, m2, m3, file = here('DATA', 'temperature_brms_diff.RData'))
+
+emmeans::emtrends(m3, pairwise ~ mitten | condition, var = 'time_poly2')
+emmeans::emtrends(m3, pairwise ~ mitten | condition, var = 'time_poly3')
+
+
+
+```
+
+## Plots
+
+### Absolute
 
 ```{r Absolute}
 
 ci95 = dat.long |>
-  dplyr::group_by(data.version, h.target, strides, drops) |>
-  dplyr::summarise(h.mean = mean(h.value, na.rm = TRUE),
-                   h.median = median(h.value, na.rm = TRUE),
+  dplyr::group_by(data.version, drops) |>
+  dplyr::summarise(h.mean = mean(h.value.abs, na.rm = TRUE),
+                   h.median = median(h.value.abs, na.rm = TRUE),
                    .groups = "drop")
 
 # Define line types that get more dashed with larger drops
@@ -148,7 +355,7 @@ linetypes = c("solid", "88", "66", "44", "22", "11")
 linetype_map = setNames(rep(linetypes, length.out = length(unique(dat.long$drops))),
                         sort(unique(dat.long$drops)))
 
-ggplot(dat.long, aes(x = h.value, fill = data.version)) +
+ggplot(dat.long, aes(x = h.value.abs, fill = data.version)) +
   # Beautifying
   theme_classic() +
   scale_x_continuous(limits = c(0, 0.15),
@@ -164,20 +371,423 @@ ggplot(dat.long, aes(x = h.value, fill = data.version)) +
   scale_linetype_manual(values = linetype_map,
                         name = "Dropped Data (%)") +
   # More beautifying
-  scale_fill_manual(values = c("random.diff" = scales::alpha("#0021A5", 0.1),
-                               "contiguous.diff" = scales::alpha("#FA4616", 0.1)),
+  scale_fill_manual(values = c("random.diff" = scales::alpha("#FA4616", 0.1),
+                               "contiguous.diff" = scales::alpha("#0021A5", 0.1)),
                     name = "Data Version",
                     labels = c("Random", "Contiguous")) +
-  scale_color_manual(values = c("random.diff" = "#0021A5",
-                                "contiguous.diff" = "#FA4616"),
+  scale_color_manual(values = c("random.diff" = "#FA4616",
+                                "contiguous.diff" = "#0021A5"),
                      guide = "none") +
   labs(x = "Difference from Original Hurst Exponent (Dropped - Original)",
        y = "Density") +
-  facet_grid(rows = vars(h.target),
-             cols = vars(strides),
-             labeller = labeller(h.target = function(x) paste0("H = ", x),
-                                 strides = function(x) paste0(x, " Strides")),
+  facet_grid(rows = vars(drops),
+             labeller = labeller(strides = function(x) paste0(x, " Strides")),
              axes = "all_x") +
   theme(legend.position = "top")
+
+```
+
+### Relative
+
+```{r Relative}
+
+ci95 = dat.long |>
+  dplyr::group_by(data.version, drops) |>
+  dplyr::summarise(h.mean = mean(h.value, na.rm = TRUE),
+                   h.median = median(h.value, na.rm = TRUE),
+                   .groups = "drop")
+
+# Define line types that get more dashed with larger drops
+linetypes = c("solid", "88", "66", "44", "22", "11")
+linetype_map = setNames(rep(linetypes, length.out = length(unique(dat.long$drops))),
+                        sort(unique(dat.long$drops)))
+
+ggplot(dat.long, aes(x = h.value.abs, fill = data.version)) +
+  # Beautifying
+  theme_classic() +
+  scale_x_continuous(limits = c(-0.15, 0.15),
+                     breaks = c(-0.15, -0.10, -0.05, 0, 0.05, 0.10, 0.15)) +
+  # Raw data
+  geom_density(alpha = 0.3, adjust = 1, show.legend = TRUE) +
+  # Mean lines with varying dash intensity by drops
+  geom_vline(data = ci95, aes(xintercept = h.mean,
+                              color = data.version,
+                              linetype = factor(drops)),
+             linewidth = 0.8,
+             show.legend = TRUE) +
+  scale_linetype_manual(values = linetype_map,
+                        name = "Dropped Data (%)") +
+  # More beautifying
+  scale_fill_manual(values = c("random.diff" = scales::alpha("#FA4616", 0.1),
+                               "contiguous.diff" = scales::alpha("#0021A5", 0.1)),
+                    name = "Data Version",
+                    labels = c("Random", "Contiguous")) +
+  scale_color_manual(values = c("random.diff" = "#FA4616",
+                                "contiguous.diff" = "#0021A5"),
+                     guide = "none") +
+  labs(x = "Difference from Original Hurst Exponent (Dropped - Original)",
+       y = "Density") +
+  facet_grid(rows = vars(drops),
+             labeller = labeller(strides = function(x) paste0(x, " Strides")),
+             axes = "all_x") +
+  theme(legend.position = "top")
+
+```
+
+# MindinMotion
+
+Analysis of data obtained from MindinMotion
+
+## Libraries and Data Management
+
+```{r Libraries and Data Management}
+
+options(scipen = 999)
+rm(list=ls())
+
+library(BayesFactor)
+library(data.table)
+library(dplyr)
+library(here)
+library(ggplot2)
+library(ggridges)
+library(readxl)
+
+dat = data.table::fread(here::here('DATA', 'H_Simulation', 'H_Simulation_MIM_Results.csv'))
+dat.demographics = as.data.table(read_excel(here("DATA", "MiM_Crunch_demographics_Chang.xlsx"), sheet = 2))
+dat.demographics = dat.demographics[ ,c(3,6:13)] # Remove unwanted columns
+
+# Merge
+dat = merge(dat, dat.demographics, by.x = "id", by.y = "subject_code", all.x = TRUE)
+
+# Remove skipped trials/NaNs
+dat = dat[!(is.nan(dat$hurst) | dat$hurst == "") | !(is.nan(dat$entropy) | dat$entropy == ""), ]
+
+# Cleanup
+setnames(dat, old = c("Age", "Sex(1=M,0=F)", "Handedness (1=R, 2=L)", 
+                      "terrain_trials_speed_ms", "Moca", "SPPB", 
+                      "400_meters_seconds", "400m_speed"),
+         new = c("age", "sex", "handedness", "terrain.speed", 
+                 "moca", "sppb", "time.400m", "speed.400m"))
+dat$handedness = ifelse(dat$handedness == 1, "right", "left")
+dat$sex = ifelse(dat$sex == 1, "male", "female")
+dat$speed = gsub("p", ".", dat$speed)
+
+dat$functioning = ifelse(dat$sppb < 10, "low.functioning", "high.functioning") # Low functioning defined as sppb < 10
+dat$group = ifelse(dat$age < 50, "young", "old") # young adults are less than 50 years old
+
+# Only include older adults because we know differences are likely between young and older adults
+dat = dat[dat$group == 'old']
+
+# Factors
+dat$id = factor(dat$id)
+dat$treadmill = factor(dat$treadmill)
+dat$speed = factor(dat$speed)
+dat$terrain = factor(dat$terrain)
+dat$trial = factor(dat$trial)
+dat$sex = factor(dat$sex)
+dat$handedness = factor(dat$handedness)
+dat$functioning = factor(dat$functioning)
+dat$group = factor(dat$group)
+dat$n.intervals.dropped = factor(dat$n.intervals.dropped)
+dat$pct.timeseries.dropped = factor(dat$pct.timeseries.dropped)
+
+```
+
+## BFTests
+
+```{r BFTests}
+
+# Are there differences between levels of dropped data?
+BayesFactor::anovaBF(hurst ~ n.intervals.dropped + id, data = dat, whichRandom = 'id')
+BayesFactor::anovaBF(entropy ~ n.intervals.dropped + id, data = dat, whichRandom = 'id')
+
+# Differences between participant features?
+BayesFactor::anovaBF(hurst ~ speed * functioning * trial + id, data = dat, whichRandom = 'id')
+BayesFactor::ttestBF(x = dat$hurst[dat$speed == '0.25' & dat$functioning == 'high.functioning'],
+                     y = dat$hurst[dat$speed == '0.25' & dat$functioning == 'low.functioning'],
+                     paired = FALSE)
+BayesFactor::ttestBF(x = dat$hurst[dat$speed == '0.5' & dat$functioning == 'high.functioning'],
+                     y = dat$hurst[dat$speed == '0.5' & dat$functioning == 'low.functioning'],
+                     paired = FALSE)
+BayesFactor::ttestBF(x = dat$hurst[dat$speed == '0.75' & dat$functioning == 'high.functioning'],
+                     y = dat$hurst[dat$speed == '0.75' & dat$functioning == 'low.functioning'],
+                     paired = FALSE)
+BayesFactor::ttestBF(x = dat$hurst[dat$speed == '1.0' & dat$functioning == 'high.functioning'],
+                     y = dat$hurst[dat$speed == '1.0' & dat$functioning == 'low.functioning'],
+                     paired = FALSE)
+
+
+summary(aov(hurst ~ speed * trial * functioning, data = dat))
+t.test(x = dat$hurst[dat$speed == '0.25' & dat$functioning == 'high.functioning'],
+       y = dat$hurst[dat$speed == '0.25' & dat$functioning == 'low.functioning'])
+t.test(x = dat$hurst[dat$speed == '0.5' & dat$functioning == 'high.functioning'],
+       y = dat$hurst[dat$speed == '0.5' & dat$functioning == 'low.functioning'])
+t.test(x = dat$hurst[dat$speed == '0.75' & dat$functioning == 'high.functioning'],
+       y = dat$hurst[dat$speed == '0.75' & dat$functioning == 'low.functioning'])
+t.test(x = dat$hurst[dat$speed == '1.0' & dat$functioning == 'high.functioning'],
+       y = dat$hurst[dat$speed == '1.0' & dat$functioning == 'low.functioning'])
+
+```
+
+```{r lm}
+
+m0 = lm(hurst ~ 1 + speed * functioning * trial, data = dat)
+summary(m0)
+
+
+
+plot(dat$strides, dat$h.value.abs)
+plot(dat$strides, dat$h.value)
+
+
+
+m0 = lm(h.value.abs ~ 1 + drops * strides + data.version, data = dat)
+summary(m0)
+library(emmeans)
+emm <- emmeans(m0, ~ data.version)
+emm
+contrast(emm, method = "eff")   # tests each level against zero
+
+
+
+
+
+
+
+```
+
+
+```{r brms}
+
+library(brms)
+library(cmdstanr)
+
+m0 = brms::brm(hurst ~ 1 + speed * functioning * trial,
+               data = dat,
+               cores = parallel::detectCores() - 1,
+               chains = 4,
+               iter = 3000,
+               threads = threading(4),
+               backend = 'cmdstanr',
+               stan_model_args = list(stanc_options = list('O1')),
+               seed = 4172015,
+               refresh = 1000)
+m0
+plot(m0)
+conditional_effects(m0)
+
+dat$moca = scale(dat$moca)
+dat$sppb = scale(dat$sppb)
+dat$time.400m = scale(dat$time.400m)
+
+m0 = brms::brm(hurst ~ functioning * moca * sppb * time.400m,
+               data = dat,
+               cores = parallel::detectCores() - 1,
+               chains = 4,
+               iter = 3000,
+               threads = threading(4),
+               backend = 'cmdstanr',
+               stan_model_args = list(stanc_options = list('O1')),
+               seed = 4172015,
+               refresh = 1000)
+m0
+plot(m0)
+conditional_effects(m0)
+
+
+m0 = brms::brm(h.value.abs ~ strides * drops * data.version,
+               data = dat,
+               cores = parallel::detectCores(),
+               chains = 4,
+               iter = 3000,
+               threads = threading(4),
+               backend = 'cmdstanr',
+               stan_model_args = list(stanc_options = list('O1')),
+               seed = 4172015,
+               refresh = 1000)
+
+
+
+
+
+print(summary(m3), digits = 5)
+
+loo(m1, m2, m3, compare = TRUE)
+
+save(m1, m2, m3, file = here('DATA', 'temperature_brms_diff.RData'))
+
+emmeans::emtrends(m3, pairwise ~ mitten | condition, var = 'time_poly2')
+emmeans::emtrends(m3, pairwise ~ mitten | condition, var = 'time_poly3')
+
+
+
+```
+
+## Plots
+
+### Trial Differences
+
+```{r Trial Differences}
+
+ci95 = dat |>
+  dplyr::group_by(speed, trial) |>
+  dplyr::summarise(hurst.mean = mean(hurst, na.rm = TRUE),
+                   hurst.ci.lower = bayestestR::ci(hurst, method = 'hdi', ci = 0.95)$CI_low,
+                   hurst.ci.upper = bayestestR::ci(hurst, method = 'hdi', ci = 0.95)$CI_high,
+                   entropy.mean = mean(entropy, na.rm = TRUE),
+                   entropy.ci.lower = bayestestR::ci(entropy, method = 'hdi', ci = 0.95)$CI_low,
+                   entropy.ci.upper = bayestestR::ci(entropy, method = 'hdi', ci = 0.95)$CI_high,
+                   .groups = "drop")
+
+hursts = ggplot() +
+  geom_point(data = dat, aes(x = speed,
+                             y = hurst,
+                             group = trial),
+             color = 'black', size = 1,
+             position = position_jitterdodge(jitter.width = 0.15,
+                                             dodge.width = 0.7)) +
+  # colored lines connecting condition means
+  geom_line(data = ci95, aes(x = speed,
+                             y = hurst.mean,
+                             color = trial,
+                             group = trial),
+            linewidth = 1.2, position = position_dodge(width = 0.7)) +
+  # colored mean points
+  geom_point(data = ci95, aes(x = speed,
+                              y = hurst.mean,
+                              color = trial),
+             size = 4, position = position_dodge(width = 0.7)) +
+  # 95% credible intervals (HDI)
+  geom_errorbar(data = ci95, aes(x = speed,
+                                 ymin = hurst.ci.lower,
+                                 ymax = hurst.ci.upper,
+                                 color = trial),
+                width = 0.6, linewidth = 1, position = position_dodge(width = 0.7)) +
+  # Beautify
+  labs(x = "Speed (m/s)", y = "Hurst Exponent", color = 'Trial') +
+  scale_color_manual(values = c("1" = "#D71920", "2" = "#2C3FDE"),
+                     labels = c("Trial 1", "Trial 2")) +
+  theme_classic() +
+  theme(legend.position = "top") +
+  ylim(0, 1)
+ggsave(filename = 'C:/Users/tyler_3r9w1ip/Downloads/MIM_SP_hursts.jpeg', plot = hursts,
+       dpi = "retina", bg = "white")
+
+entropys = ggplot() +
+  geom_point(data = dat, aes(x = speed,
+                             y = entropy,
+                             group = trial),
+             color = 'black', size = 1,
+             position = position_jitterdodge(jitter.width = 0.15,
+                                             dodge.width = 0.7)) +
+  # colored lines connecting condition means
+  geom_line(data = ci95, aes(x = speed,
+                             y = entropy.mean,
+                             color = trial,
+                             group = trial),
+            linewidth = 1.2, position = position_dodge(width = 0.7)) +
+  # colored mean points
+  geom_point(data = ci95, aes(x = speed,
+                              y = entropy.mean,
+                              color = trial),
+             size = 4, position = position_dodge(width = 0.7)) +
+  # 95% credible intervals (HDI)
+  geom_errorbar(data = ci95, aes(x = speed,
+                                 ymin = entropy.ci.lower,
+                                 ymax = entropy.ci.upper,
+                                 color = trial),
+                width = 0.6, linewidth = 1, position = position_dodge(width = 0.7)) +
+  # Beautify
+  labs(x = "Speed (m/s)", y = "Sample Entropy", color = 'Trial') +
+  scale_color_manual(values = c("1" = "#D71920", "2" = "#2C3FDE"),
+                     labels = c("Trial 1", "Trial 2")) +
+  theme_classic() +
+  theme(legend.position = "top")
+ggsave(filename = 'C:/Users/tyler_3r9w1ip/Downloads/MIM_SP_entropys.jpeg', plot = entropys,
+       dpi = "retina", bg = "white")
+
+```
+
+### Cognitive Function Differences
+
+```{r Cognitive Function Differences}
+
+ci95 = dat |>
+  dplyr::group_by(speed, functioning) |>
+  dplyr::summarise(hurst.mean = mean(hurst, na.rm = TRUE),
+                   hurst.ci.lower = bayestestR::ci(hurst, method = 'hdi', ci = 0.95)$CI_low,
+                   hurst.ci.upper = bayestestR::ci(hurst, method = 'hdi', ci = 0.95)$CI_high,
+                   entropy.mean = mean(entropy, na.rm = TRUE),
+                   entropy.ci.lower = bayestestR::ci(entropy, method = 'hdi', ci = 0.95)$CI_low,
+                   entropy.ci.upper = bayestestR::ci(entropy, method = 'hdi', ci = 0.95)$CI_high,
+                   .groups = "drop")
+
+hursts = ggplot() +
+  geom_point(data = dat, aes(x = speed,
+                             y = hurst,
+                             group = functioning),
+             color = 'black', size = 1,
+             position = position_jitterdodge(jitter.width = 0.15,
+                                             dodge.width = 0.7)) +
+  # colored lines connecting condition means
+  geom_line(data = ci95, aes(x = speed,
+                             y = hurst.mean,
+                             color = functioning,
+                             group = functioning),
+            linewidth = 1.2, position = position_dodge(width = 0.7)) +
+  # colored mean points
+  geom_point(data = ci95, aes(x = speed,
+                              y = hurst.mean,
+                              color = functioning),
+             size = 4, position = position_dodge(width = 0.7)) +
+  # 95% credible intervals (HDI)
+  geom_errorbar(data = ci95, aes(x = speed,
+                                 ymin = hurst.ci.lower,
+                                 ymax = hurst.ci.upper,
+                                 color = functioning),
+                width = 0.6, linewidth = 1, position = position_dodge(width = 0.7)) +
+  # Beautify
+  labs(x = "Speed (m/s)", y = "Hurst Exponent", color = 'Cognitive Function') +
+  scale_color_manual(values = c("high.functioning" = "#D71920", "low.functioning" = "#2C3FDE"),
+                     labels = c("High Functioning", "Low Functioning")) +
+  theme_classic() +
+  theme(legend.position = "top") +
+  ylim(0, 1)
+ggsave(filename = 'C:/Users/tyler_3r9w1ip/Downloads/MIM_SP_hursts.jpeg', plot = hursts,
+       dpi = "retina", bg = "white")
+
+entropys = ggplot() +
+  geom_point(data = dat, aes(x = speed,
+                             y = entropy,
+                             group = functioning),
+             color = 'black', size = 1,
+             position = position_jitterdodge(jitter.width = 0.15,
+                                             dodge.width = 0.7)) +
+  # colored lines connecting condition means
+  geom_line(data = ci95, aes(x = speed,
+                             y = entropy.mean,
+                             color = functioning,
+                             group = functioning),
+            linewidth = 1.2, position = position_dodge(width = 0.7)) +
+  # colored mean points
+  geom_point(data = ci95, aes(x = speed,
+                              y = entropy.mean,
+                              color = functioning),
+             size = 4, position = position_dodge(width = 0.7)) +
+  # 95% credible intervals (HDI)
+  geom_errorbar(data = ci95, aes(x = speed,
+                                 ymin = entropy.ci.lower,
+                                 ymax = entropy.ci.upper,
+                                 color = functioning),
+                width = 0.6, linewidth = 1, position = position_dodge(width = 0.7)) +
+  # Beautify
+  labs(x = "Speed (m/s)", y = "Sample Entropy", color = 'Cognitive Function') +
+  scale_color_manual(values = c("high.functioning" = "#D71920", "low.functioning" = "#2C3FDE"),
+                     labels = c("High Functioning", "Low Functioning")) +
+  theme_classic() +
+  theme(legend.position = "top")
+ggsave(filename = 'C:/Users/tyler_3r9w1ip/Downloads/MIM_SP_entropys.jpeg', plot = entropys,
+       dpi = "retina", bg = "white")
 
 ```
