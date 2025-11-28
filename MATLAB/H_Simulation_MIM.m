@@ -91,7 +91,7 @@ parfor i = 1:length(my_files)
         intervals_thresh_lower = intervals_mean - 3 * intervals_sd;
         intervals = intervals(intervals >= intervals_thresh_lower & intervals <= intervals_thresh_upper);
         intervals_dropped(i,:) = intervals_length_original - numel(intervals);
-        pct_dropped_timeseries(i,:) =  (numel(intervals) / numel(intervals_length_original)) * 100;
+        pct_dropped_timeseries(i,:) =  (numel(intervals) / intervals_length_original) * 100;
 
         % Hurst Exponent
         hurst = median(bayesH(intervals, 200));
