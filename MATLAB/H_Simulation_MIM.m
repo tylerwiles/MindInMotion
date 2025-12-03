@@ -5,6 +5,10 @@
 % EMAIL: twiles@ufl.edu
 
 % DESCRIPTION:
+% Take stride intervals from the mind in motion dataset and estimate the
+% Hurst exponent. The Hurst exponent is calculated for the final 50, 100,
+% 150, 200 strides (when the number of strides allows) and then the time
+% series is dropped from 2-10% randomly or contiguously.
 
 clear; close all; clc;
 
@@ -109,7 +113,7 @@ parfor i = 1:length(my_files)
 
             n_total = length(intervals); % total strides for this file
 
-            % Cut strides randomly based on %
+            % Cut strides based on %
             for j = 1:numel(drops)
 
                 drops_used_row(j) = drops(j); % Current % of strides to be droppped

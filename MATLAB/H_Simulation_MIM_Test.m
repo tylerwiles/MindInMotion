@@ -1,13 +1,15 @@
 
-% TITLE: H_Simulation_MIM.m
+% TITLE: H_Simulation_MIM_Test.m
 % DATE: 11/27/2025
 % AUTHOR: Tyler M. Wiles, PhD
 % EMAIL: twiles@ufl.edu
 
 % DESCRIPTION:
-
-
-
+% Estimate the Hurst exponent and Sample Entropy from stride intervals
+% using the mind in motion dataset. Outliers are removed based on a
+% standard deviation. These results are for a mini example of using data
+% that sometimes needs to be cut due to missing heel contacts, and then
+% comparing between high and low functioning adults.
 
 clear; close all; clc;
 
