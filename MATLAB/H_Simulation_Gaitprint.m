@@ -1,14 +1,14 @@
 
 % TITLE: H_Simulation_Gaitprint.m
-% DATE: November 26, 2025
+% DATE: 11/27/2025
 % AUTHOR: Tyler M. Wiles, PhD
 % EMAIL: twiles@ufl.edu
 
 % DESCRIPTION:
-% Get the Hurst exponent from right stride intervals of all heatlhy adults
-% that completed four minute walking trials with bad heel contacts.
-% Randomly and contiguously drops 2-10% of the full trial's heel contacts
-% before getting H.
+% Take stride intervals from the mind in motion dataset and estimate the
+% Hurst exponent. The Hurst exponent is calculated for the final 50, 100,
+% 150, 200 strides (when the number of strides allows) and then the time
+% series is dropped from 2-10% randomly or contiguously.
 
 clear; close all; clc;
 
@@ -24,19 +24,27 @@ ref = readtable("C:\Users\tyler_3r9w1ip\Desktop\Github_Repositories\MindInMotion
 ref(:,19) = strcat(ref{:,1}, {'_'}, ref{:,2}, {'_'}, ref{:,3}, {'_'}, ref{:,4}, {'_'}, ref{:,5});
 
 drops = 0.02:0.02:0.10;
+min_vec = [50 100 150 200];
 
 n_files = length(my_files);
 n_drops = numel(drops);
+n_min = numel(min_vec);
 
-id_condition = cell(n_files,1);
-h_original = NaN(n_files,1);
+% one H per file x min_contacts setting
+h_original = NaN(n_files, n_min);
+id = cell(n_files, n_min);
+treadmill = cell(n_files, n_min);
+speed = cell(n_files, n_min);
+terrain = cell(n_files, n_min);
+trial = cell(n_files, n_min);
 
-drops_used = NaN(n_files,n_drops);
-strides = NaN(n_files,n_drops);
-strides_cut = NaN(n_files,n_drops);
-strides_new_length = NaN(n_files,n_drops);
-h_random = NaN(n_files,n_drops);
-h_contiguous = NaN(n_files,n_drops);
+% per file x min_contacts x %drop
+drops_used = NaN(n_files, n_min, n_drops);
+strides = NaN(n_files, n_min, n_drops);
+strides_cut = NaN(n_files, n_min, n_drops);
+strides_new_length = NaN(n_files, n_min, n_drops);
+h_random = NaN(n_files, n_min, n_drops);
+h_contiguous = NaN(n_files, n_min, n_drops);
 
 parfor i = 1:length(my_files)
 
@@ -59,66 +67,79 @@ parfor i = 1:length(my_files)
         continue
     else
 
-        id_condition{i,1} = png_filename;
-
         dat = readmatrix(full_filename); % Read in data
 
         [right_contact_locs, ~, ~, ~] = Gaitprint_Find_Gait_Events(dat, base_filename); % Get right heel contacts
 
         stride_intervals = diff(right_contact_locs) / 200; % Get stride interval divided by sampling rate
 
-        h_original(i,:) = median(bayesH(stride_intervals, 200)); % Get Hurst exponent for original timeseries
+        % Loop over minimum contacts thresholds
+        for k = 1:n_min
 
-        % local row buffers for this file
-        drops_used_row = NaN(1,n_drops);
-        strides_row = NaN(1,n_drops);
-        strides_cut_row = NaN(1,n_drops);
-        strides_new_length_row = NaN(1,n_drops);
-        h_random_row = NaN(1,n_drops);
-        h_contiguous_row = NaN(1,n_drops);
+            min_contacts = min_vec(k);
 
-        n_total = length(stride_intervals); % total strides for this file
+            % only run for this threshold if we have enough contacts
+            if numel(stride_intervals) >= min_contacts
 
-        % Cut strides randomly based on %
-        for j = 1:numel(drops)
+                % Cut to last min_contacts
+                stride_intervals_cut = stride_intervals(max(1, numel(stride_intervals) - min_contacts + 1) : end);
 
-            drops_used_row(j) = drops(j); % Current % of strides to be droppped
+                % H for original series for this (file, min_contacts) pair
+                h_original(i,k) = median(bayesH(stride_intervals_cut, 200));
 
-            n_keep = n_total - floor(n_total * drops(j)); % How many strides to keep
+                % local row buffers for this file & threshold
+                drops_used_row = NaN(1, n_drops);
+                strides_row = NaN(1, n_drops);
+                strides_cut_row = NaN(1, n_drops);
+                strides_new_length_row = NaN(1, n_drops);
+                h_random_row = NaN(1, n_drops);
+                h_contiguous_row = NaN(1, n_drops);
+                id{i} = png_filename;
 
-            strides_row(j) = n_total; % Number of strides
+                n_total = length(stride_intervals_cut); % total strides for this file
 
-            strides_cut_row(j) = n_total - n_keep; % Number of strides cut
+                % Cut strides based on %
+                for j = 1:numel(drops)
 
-            stride_intervals_random = stride_intervals(sort(randperm(n_total, n_keep))); % Cut the dataframe
+                    drops_used_row(j) = drops(j); % Current % of strides to be droppped
 
-            strides_new_length_row(j) = length(stride_intervals_random); % Length of new time series
+                    n_keep = n_total - floor(n_total * drops(j)); % How many strides to keep
 
-            h_random_row(j) = median(bayesH(stride_intervals_random, 200)); % Get H
+                    strides_row(j) = n_total; % Number of strides
+                    strides_cut_row(j) = n_total - n_keep; % Number of strides cut
 
-            % Do the same for contiguous strides
-            n_drop = n_total - n_keep; % Number of strides to cut
+                    stride_intervals_cut_random = stride_intervals_cut(sort(randperm(n_total, n_keep))); % Cut the dataframe
 
-            start_idx = randi(n_total - n_drop + 1); % choose random start for contiguous block to cut
+                    strides_new_length_row(j) = length(stride_intervals_cut_random);  % Length of new time series
 
-            % Create index of those to keep, then assign those that will be removed
-            % a zero
-            keep_mask = true(n_total, 1);
-            keep_mask(start_idx:start_idx + n_drop - 1) = false;
+                    h_random_row(j) = median(bayesH(stride_intervals_cut_random, 200)); % Get H
 
-            stride_intervals_contiguous = stride_intervals(keep_mask); % Cut based on index above
+                    % Do the same for contiguous strides
+                    n_drop = n_total - n_keep; % Number of strides to cut
 
-            h_contiguous_row(j) = median(bayesH(stride_intervals_contiguous, 200)); % Get H
+                    start_idx = randi(n_total - n_drop + 1); % choose random start for contiguous block to cut
+
+                    % Create index of those to keep, then assign those that will be removed a zero
+                    keep_mask = true(n_total, 1);
+                    keep_mask(start_idx:start_idx + n_drop - 1) = false;
+
+                    stride_intervals_cut_contiguous = stride_intervals_cut(keep_mask); % Cut based on index above
+
+                    h_contiguous_row(j) = median(bayesH(stride_intervals_cut_contiguous, 200)); % Get H
+
+                end
+
+                % assign rows once per file & threshold (parfor-compatible slicing)
+                strides(i,k,:) = strides_row;
+                drops_used(i,k,:) = drops_used_row;
+                strides_cut(i,k,:) = strides_cut_row;
+                strides_new_length(i,k,:) = strides_new_length_row;
+                h_random(i,k,:) = h_random_row;
+                h_contiguous(i,k,:) = h_contiguous_row;
+
+            end
 
         end
-
-        % assign rows once per file
-        strides(i,:) = strides_row;
-        drops_used(i,:) = drops_used_row;
-        strides_cut(i,:) = strides_cut_row;
-        strides_new_length(i,:) = strides_new_length_row;
-        h_random(i,:) = h_random_row;
-        h_contiguous(i,:) = h_contiguous_row;
 
     end
 
@@ -127,8 +148,9 @@ end
 % Combine outputs from parfor into one long table
 n_files = length(my_files);
 n_drops = numel(drops);
+n_min = numel(min_vec);
 
-% Flatten per-(file,drop) matrices into column vectors
+% Flatten per-(file, min, drop) matrices into column vectors
 strides_col = strides(:);
 drops_col = drops_used(:);
 strides_cut_col = strides_cut(:);
@@ -136,26 +158,29 @@ strides_new_length_col = strides_new_length(:);
 h_random_col = h_random(:);
 h_contiguous_col = h_contiguous(:);
 
-% Repeat trial info for each drop level
-id_condition_rep = repmat(id_condition, 1, n_drops);
-id_condition_col = id_condition_rep(:);
+% Build corresponding min_contacts vector (same shape as strides, etc.)
+min_mat = repmat(reshape(min_vec, 1, n_min, 1), [n_files, 1, n_drops]);
+min_col = min_mat(:);
 
-% Repeat original Hurst exponent for each drop level
-h_original_rep = repmat(h_original, 1, n_drops);
+% Repeat original H for each drop level
+h_original_rep = repmat(h_original, 1, 1, n_drops);
 h_original_col = h_original_rep(:);
 
-% Build table in desired column order
-results = table(id_condition_col, strides_col, ...
-    drops_col, strides_cut_col, ...
-    strides_new_length_col, h_original_col, ...
-    h_random_col, h_contiguous_col, ...
-    'VariableNames', {'id.condition', 'strides', ...
-    'drops', 'strides.cut', ...
-    'strides.new.length', 'h.original', ...
-    'h.random', 'h.contiguous'});
+% Do the same for the id condition variables
+id(:, 2:end) = repmat(id(:,1), 1, size(id,2)-1);
+id_rep = repmat(id, 1, 1, n_drops);
+id_col = id_rep(:);
 
-% Remove skipped trials
-valid_idx = ~isnan(h_random_col);
-results = results(valid_idx,:);
+% Build table in desired column order
+results = table(id_col, ...
+    strides_col, drops_col, strides_cut_col, strides_new_length_col, ...
+    h_original_col, h_random_col, h_contiguous_col, ...
+    'VariableNames', {'id', ...
+    'strides', 'drops', 'strides.cut', 'strides.new.length', ...
+    'h.original', 'h.random', 'h.contiguous'});
+
+% % Remove skipped trials / thresholds
+% valid_idx = ~isnan(h_random_col);
+% results = results(valid_idx,:);
 
 writetable(results, fullfile(output_directory, 'H_Simulation_Gaitprint_Results.csv'));

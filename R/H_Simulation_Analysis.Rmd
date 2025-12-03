@@ -52,7 +52,7 @@ dat.long$id = factor(dat.long$id)
 dat.long$strides = factor(dat.long$strides)
 dat.long$drops = factor(dat.long$drops)
 dat.long$strides.cut = factor(dat.long$strides.cut)
-dat.long$strides.new.length = dat.long$strides.new.length
+dat.long$strides.new.length = factor(dat.long$strides.new.length)
 dat.long$h.target = factor(dat.long$h.target, levels = rev(levels(factor(dat.long$h.target))))
 dat.long$data.version = factor(dat.long$data.version)
 
@@ -195,11 +195,13 @@ ggplot(dat.long, aes(x = h.value, fill = data.version)) +
 
 ```
 
-# Gaitprint
+# Empirical
+
+## Gaitprint
 
 Analysis of data obtained from Gaitprint
 
-## Libraries and Data Management
+### Libraries and Data Management
 
 ```{r Libraries and Data Management}
 
@@ -213,8 +215,8 @@ library(ggridges)
 
 dat = data.table::fread(here::here('DATA', 'H_Simulation', 'H_Simulation_Gaitprint_Results.csv'))
 
-setnames(dat, old = c('id.condition', 'h.original', 'h.random', 'h.contiguous'),
-         new = c('id', 'original', 'random', 'contiguous'))
+setnames(dat, old = c('h.original', 'h.random', 'h.contiguous'),
+         new = c('original', 'random', 'contiguous'))
 
 dat$random.diff = dat$random - dat$original
 dat$contiguous.diff = dat$contiguous - dat$original
@@ -229,19 +231,21 @@ dat.long = dat.long[!(dat.long$data.version %in% c('original', 'random', 'contig
 
 dat.long$drops = dat.long$drops * 100 # Change to percent
 
+dat.long = dat.long[!is.nan(strides)] # Remove skipped trials
+
 # Factors
 dat.long$id = factor(dat.long$id)
 # dat.long$strides = factor(dat.long$strides)
 dat.long$drops = factor(dat.long$drops)
 dat.long$strides.cut = factor(dat.long$strides.cut)
-dat.long$strides.new.length = dat.long$strides.new.length
+dat.long$strides.new.length = factor(dat.long$strides.new.length)
 dat.long$data.version = factor(dat.long$data.version)
 
 dat.long$h.value.abs = abs(dat.long$h.value)
 
 ```
 
-## BFTests
+### BFTests
 
 Using Bayesian ttests, is H obtained from the dropped time series different from zero?
 
@@ -345,7 +349,7 @@ emmeans::emtrends(m3, pairwise ~ mitten | condition, var = 'time_poly3')
 ```{r Absolute}
 
 ci95 = dat.long |>
-  dplyr::group_by(data.version, drops) |>
+  dplyr::group_by(data.version, strides, drops) |>
   dplyr::summarise(h.mean = mean(h.value.abs, na.rm = TRUE),
                    h.median = median(h.value.abs, na.rm = TRUE),
                    .groups = "drop")
@@ -381,6 +385,7 @@ ggplot(dat.long, aes(x = h.value.abs, fill = data.version)) +
   labs(x = "Difference from Original Hurst Exponent (Dropped - Original)",
        y = "Density") +
   facet_grid(rows = vars(drops),
+             cols = vars(strides),
              labeller = labeller(strides = function(x) paste0(x, " Strides")),
              axes = "all_x") +
   theme(legend.position = "top")
@@ -392,7 +397,7 @@ ggplot(dat.long, aes(x = h.value.abs, fill = data.version)) +
 ```{r Relative}
 
 ci95 = dat.long |>
-  dplyr::group_by(data.version, drops) |>
+  dplyr::group_by(data.version, strides, drops) |>
   dplyr::summarise(h.mean = mean(h.value, na.rm = TRUE),
                    h.median = median(h.value, na.rm = TRUE),
                    .groups = "drop")
@@ -402,7 +407,7 @@ linetypes = c("solid", "88", "66", "44", "22", "11")
 linetype_map = setNames(rep(linetypes, length.out = length(unique(dat.long$drops))),
                         sort(unique(dat.long$drops)))
 
-ggplot(dat.long, aes(x = h.value.abs, fill = data.version)) +
+ggplot(dat.long, aes(x = h.value, fill = data.version)) +
   # Beautifying
   theme_classic() +
   scale_x_continuous(limits = c(-0.15, 0.15),
@@ -428,13 +433,182 @@ ggplot(dat.long, aes(x = h.value.abs, fill = data.version)) +
   labs(x = "Difference from Original Hurst Exponent (Dropped - Original)",
        y = "Density") +
   facet_grid(rows = vars(drops),
+             cols = vars(strides),
              labeller = labeller(strides = function(x) paste0(x, " Strides")),
              axes = "all_x") +
   theme(legend.position = "top")
 
 ```
 
-# MindinMotion
+## MindinMotion
+
+Analysis of data obtained from MindinMotion
+
+### Libraries and Data Management
+
+```{r Libraries and Data Management}
+
+options(scipen = 999)
+rm(list=ls())
+
+library(BayesFactor)
+library(data.table)
+library(dplyr)
+library(here)
+library(ggplot2)
+library(ggridges)
+library(readxl)
+
+dat = data.table::fread(here::here('DATA', 'H_Simulation', 'H_Simulation_MIM_Results.csv'))
+
+# Only include trials that did not have to contain dropped data due to missing contacts
+dat.ref = data.table::fread(here::here('DATA', 'H_Simulation', 'H_Simulation_MIM_Results_Test.csv'))
+dat.ref = dat.ref[dat.ref$n.intervals.dropped == 0]
+dat = merge(dat, dat.ref[ ,1:5], by = c('id', 'treadmill', 'speed', 'terrain', 'trial'), all = FALSE)
+
+dat = dat[!is.nan(strides)] # Remove skipped trials
+
+setnames(dat, old = c('h.original', 'h.random', 'h.contiguous'),
+         new = c('original', 'random', 'contiguous'))
+
+dat$random.diff = dat$random - dat$original
+dat$contiguous.diff = dat$contiguous - dat$original
+
+dat.long = melt(dat,
+                measure.vars = tail(names(dat), 5),
+                variable.name = "data.version",
+                value.name   = "h.value")
+
+# Easier to see/compare results with the differences rather than raw values
+dat.long = dat.long[!(dat.long$data.version %in% c('original', 'random', 'contiguous')), ]
+
+dat.long$drops = dat.long$drops * 100 # Change to percent
+
+dat.long = dat.long[!is.nan(strides)] # Remove skipped trials
+
+# Factors
+dat.long$id = factor(dat.long$id)
+# dat.long$strides = factor(dat.long$strides)
+dat.long$drops = factor(dat.long$drops)
+dat.long$strides.cut = factor(dat.long$strides.cut)
+dat.long$strides.new.length = factor(dat.long$strides.new.length)
+dat.long$data.version = factor(dat.long$data.version)
+
+dat.long$h.value.abs = abs(dat.long$h.value)
+
+```
+
+### Plots
+
+#### Absolute
+
+```{r Absolute}
+
+ci95 = dat.long |>
+  dplyr::group_by(data.version, strides, drops) |>
+  dplyr::summarise(h.mean = mean(h.value.abs, na.rm = TRUE),
+                   h.median = median(h.value.abs, na.rm = TRUE),
+                   .groups = "drop")
+
+# Define line types that get more dashed with larger drops
+linetypes = c("solid", "88", "66", "44", "22", "11")
+linetype_map = setNames(rep(linetypes, length.out = length(unique(dat.long$drops))),
+                        sort(unique(dat.long$drops)))
+
+ggplot(dat.long, aes(x = h.value.abs, fill = data.version)) +
+  # Beautifying
+  theme_classic() +
+  scale_x_continuous(limits = c(0, 0.15),
+                     breaks = c(0, 0.05, 0.10, 0.15)) +
+  # Raw data
+  geom_density(alpha = 0.3, adjust = 1, show.legend = TRUE) +
+  # Mean lines with varying dash intensity by drops
+  geom_vline(data = ci95, aes(xintercept = h.mean,
+                              color = data.version,
+                              linetype = factor(drops)),
+             linewidth = 0.8,
+             show.legend = TRUE) +
+  scale_linetype_manual(values = linetype_map,
+                        name = "Dropped Data (%)") +
+  # More beautifying
+  scale_fill_manual(values = c("random.diff" = scales::alpha("#FA4616", 0.1),
+                               "contiguous.diff" = scales::alpha("#0021A5", 0.1)),
+                    name = "Data Version",
+                    labels = c("Random", "Contiguous")) +
+  scale_color_manual(values = c("random.diff" = "#FA4616",
+                                "contiguous.diff" = "#0021A5"),
+                     guide = "none") +
+  labs(x = "Difference from Original Hurst Exponent (Dropped - Original)",
+       y = "Density") +
+  facet_grid(rows = vars(drops),
+             cols = vars(strides),
+             labeller = labeller(strides = function(x) paste0(x, " Strides")),
+             axes = "all_x") +
+  theme(legend.position = "top")
+
+```
+
+#### Relative
+
+```{r Relative}
+
+ci95 = dat.long |>
+  dplyr::group_by(data.version, strides, drops) |>
+  dplyr::summarise(h.mean = mean(h.value, na.rm = TRUE),
+                   h.median = median(h.value, na.rm = TRUE),
+                   .groups = "drop")
+
+# Define line types that get more dashed with larger drops
+linetypes = c("solid", "88", "66", "44", "22", "11")
+linetype_map = setNames(rep(linetypes, length.out = length(unique(dat.long$drops))),
+                        sort(unique(dat.long$drops)))
+
+ggplot(dat.long, aes(x = h.value, fill = data.version)) +
+  # Beautifying
+  theme_classic() +
+  scale_x_continuous(limits = c(-0.15, 0.15),
+                     breaks = c(-0.15, -0.10, -0.05, 0, 0.05, 0.10, 0.15)) +
+  # Raw data
+  geom_density(alpha = 0.3, adjust = 1, show.legend = TRUE) +
+  # Mean lines with varying dash intensity by drops
+  geom_vline(data = ci95, aes(xintercept = h.mean,
+                              color = data.version,
+                              linetype = factor(drops)),
+             linewidth = 0.8,
+             show.legend = TRUE) +
+  scale_linetype_manual(values = linetype_map,
+                        name = "Dropped Data (%)") +
+  # More beautifying
+  scale_fill_manual(values = c("random.diff" = scales::alpha("#FA4616", 0.1),
+                               "contiguous.diff" = scales::alpha("#0021A5", 0.1)),
+                    name = "Data Version",
+                    labels = c("Random", "Contiguous")) +
+  scale_color_manual(values = c("random.diff" = "#FA4616",
+                                "contiguous.diff" = "#0021A5"),
+                     guide = "none") +
+  labs(x = "Difference from Original Hurst Exponent (Dropped - Original)",
+       y = "Density") +
+  facet_grid(rows = vars(drops),
+             cols = vars(strides),
+             labeller = labeller(strides = function(x) paste0(x, " Strides")),
+             axes = "all_x") +
+  theme(legend.position = "top")
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+# MIM Hypothesis
 
 Analysis of data obtained from MindinMotion
 
