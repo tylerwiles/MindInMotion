@@ -596,18 +596,6 @@ ggplot(dat.long, aes(x = h.value, fill = data.version)) +
 
 ```
 
-
-
-
-
-
-
-
-
-
-
-
-
 # MIM Hypothesis
 
 Analysis of data obtained from MindinMotion
@@ -627,7 +615,7 @@ library(ggplot2)
 library(ggridges)
 library(readxl)
 
-dat = data.table::fread(here::here('DATA', 'H_Simulation', 'H_Simulation_MIM_Results.csv'))
+dat = data.table::fread(here::here('DATA', 'H_Simulation', 'H_Simulation_MIM_Results_Test.csv'))
 dat.demographics = as.data.table(read_excel(here("DATA", "MiM_Crunch_demographics_Chang.xlsx"), sheet = 2))
 dat.demographics = dat.demographics[ ,c(3,6:13)] # Remove unwanted columns
 
