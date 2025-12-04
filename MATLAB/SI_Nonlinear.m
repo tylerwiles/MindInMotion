@@ -234,7 +234,7 @@ parfor i = 1:length(my_files)
         entropy = Samp_En(intervals, 2 , 0.25, std(intervals));
         entropies(i,:) = entropy;
 
-        % Plot/save stride intervals to check
+        % Plot/save stride intervals to check   
         f = figure('Visible', 'off');
         plot(intervals);
         % ylim([1, 2]);
