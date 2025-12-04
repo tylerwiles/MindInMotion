@@ -137,6 +137,8 @@ ggplot(dat.long, aes(x = h.value.abs, fill = data.version)) +
                      guide = "none") +
   labs(x = "Difference from Original Hurst Exponent (Dropped - Original)",
        y = "Density") +
+  ggtitle("Simulation (Absolute)") +
+  theme(plot.title = element_text(hjust = 0.5)) +
   facet_grid(rows = vars(h.target),
              cols = vars(strides),
              labeller = labeller(h.target = function(x) paste0("H = ", x),
@@ -186,6 +188,8 @@ ggplot(dat.long, aes(x = h.value, fill = data.version)) +
                      guide = "none") +
   labs(x = "Difference from Original Hurst Exponent (Dropped - Original)",
        y = "Density") +
+  ggtitle("Simulation (Relative)") +
+  theme(plot.title = element_text(hjust = 0.5)) +
   facet_grid(rows = vars(h.target),
              cols = vars(strides),
              labeller = labeller(h.target = function(x) paste0("H = ", x),
@@ -208,7 +212,9 @@ Analysis of data obtained from Gaitprint
 options(scipen = 999)
 rm(list=ls())
 
+library(BayesFactor)
 library(data.table)
+library(dplyr)
 library(here)
 library(ggplot2)
 library(ggridges)
@@ -235,7 +241,7 @@ dat.long = dat.long[!is.nan(strides)] # Remove skipped trials
 
 # Factors
 dat.long$id = factor(dat.long$id)
-# dat.long$strides = factor(dat.long$strides)
+dat.long$strides = factor(dat.long$strides)
 dat.long$drops = factor(dat.long$drops)
 dat.long$strides.cut = factor(dat.long$strides.cut)
 dat.long$strides.new.length = factor(dat.long$strides.new.length)
@@ -251,52 +257,32 @@ Using Bayesian ttests, is H obtained from the dropped time series different from
 
 ```{r BFTests}
 
-library(dplyr)
-library(BayesFactor)
-
 bf.abs = dat.long %>%
-  group_by(drops, data.version) %>%
+  group_by(strides, drops, data.version) %>%
   summarise(BF10 = BayesFactor::extractBF(BayesFactor::ttestBF(x = h.value.abs, mu = 0))$bf,
             .groups = "drop")
 
 bf.rel = dat.long %>%
-  group_by(drops, data.version) %>%
+  group_by(strides, drops, data.version) %>%
   summarise(BF10 = BayesFactor::extractBF(BayesFactor::ttestBF(x = h.value, mu = 0))$bf,
             .groups = "drop")
 
-
-
-
-BayesFactor::anovaBF(h.value ~ drops * data.version, data = dat.long)
-BayesFactor::anovaBF(h.value.abs ~ drops * data.version, data = dat.long)
-BayesFactor::ttestBF(x = dat.long$h.value.abs[dat.long$data.version == 'random.diff' & dat.long$drops == '2'],
-                     y = dat.long$h.value.abs[dat.long$data.version == 'random.diff' & dat.long$drops == '4'],
-                     paired = FALSE)
-BayesFactor::ttestBF(x = dat.long$h.value.abs[dat.long$data.version == 'random.diff' & dat.long$drops == '2'],
-                     y = dat.long$h.value.abs[dat.long$data.version == 'random.diff' & dat.long$drops == '6'],
-                     paired = FALSE)
-
-
-
+bf.rel$BF10 = log(bf.rel$BF10)
+plot(bf.rel$drops[bf.rel$data.version == 'random.diff'], bf.rel$BF10[bf.rel$data.version == 'random.diff'])
+plot(bf.rel$strides[bf.rel$data.version == 'random.diff'], bf.rel$BF10[bf.rel$data.version == 'random.diff'])
+ggplot(bf.rel[bf.rel$data.version == 'random.diff', ],
+       aes(x = strides, y = BF10)) +
+  geom_point() +
+  facet_wrap(~ drops)
 
 ```
 
 ```{r lm}
 
-m0 = lm(h.value.abs ~ 1 + drops * strides + data.version, data = dat.long)
-summary(m0)
-
-
-
-plot(dat.long$strides, dat.long$h.value.abs)
-plot(dat.long$strides, dat.long$h.value)
-
-
-
-m0 = lm(h.value.abs ~ 1 + drops * strides + data.version, data = dat.long)
+m0 = lm(h.value.abs ~ 1 + drops * strides * data.version, data = dat.long)
 summary(m0)
 library(emmeans)
-emm <- emmeans(m0, ~ data.version)
+emm <- emmeans(m0, ~ drops | data.version)
 emm
 contrast(emm, method = "eff")   # tests each level against zero
 
@@ -384,6 +370,8 @@ ggplot(dat.long, aes(x = h.value.abs, fill = data.version)) +
                      guide = "none") +
   labs(x = "Difference from Original Hurst Exponent (Dropped - Original)",
        y = "Density") +
+  ggtitle("Gaitprint (Absolute)") +
+  theme(plot.title = element_text(hjust = 0.5)) +
   facet_grid(rows = vars(drops),
              cols = vars(strides),
              labeller = labeller(strides = function(x) paste0(x, " Strides")),
@@ -432,6 +420,8 @@ ggplot(dat.long, aes(x = h.value, fill = data.version)) +
                      guide = "none") +
   labs(x = "Difference from Original Hurst Exponent (Dropped - Original)",
        y = "Density") +
+  ggtitle("Gaitprint (Relative)") +
+  theme(plot.title = element_text(hjust = 0.5)) +
   facet_grid(rows = vars(drops),
              cols = vars(strides),
              labeller = labeller(strides = function(x) paste0(x, " Strides")),
@@ -498,6 +488,40 @@ dat.long$h.value.abs = abs(dat.long$h.value)
 
 ```
 
+### BFTests
+
+Using Bayesian ttests, is H obtained from the dropped time series different from zero?
+
+```{r BFTests}
+
+bf.abs = dat.long %>%
+  group_by(strides, drops, data.version) %>%
+  summarise(BF10 = BayesFactor::extractBF(BayesFactor::ttestBF(x = h.value.abs, mu = 0))$bf,
+            .groups = "drop")
+
+bf.rel = dat.long %>%
+  group_by(strides, drops, data.version) %>%
+  summarise(BF10 = BayesFactor::extractBF(BayesFactor::ttestBF(x = h.value, mu = 0))$bf,
+            .groups = "drop")
+
+bf.rel$BF10 = log(bf.rel$BF10)
+plot(bf.rel$drops[bf.rel$data.version == 'random.diff'], bf.rel$BF10[bf.rel$data.version == 'random.diff'])
+plot(bf.rel$strides[bf.rel$data.version == 'random.diff'], bf.rel$BF10[bf.rel$data.version == 'random.diff'])
+ggplot(bf.rel[bf.rel$data.version == 'random.diff', ],
+       aes(x = strides, y = BF10)) +
+  geom_point() +
+  facet_wrap(~ drops)
+
+bf.abs$BF10 = log(bf.abs$BF10)
+plot(bf.abs$drops[bf.abs$data.version == 'random.diff'], bf.abs$BF10[bf.abs$data.version == 'random.diff'])
+plot(bf.abs$strides[bf.abs$data.version == 'random.diff'], bf.abs$BF10[bf.abs$data.version == 'random.diff'])
+ggplot(bf.abs[bf.abs$data.version == 'random.diff', ],
+       aes(x = strides, y = BF10)) +
+  geom_point() +
+  facet_wrap(~ drops)
+
+```
+
 ### Plots
 
 #### Absolute
@@ -540,6 +564,8 @@ ggplot(dat.long, aes(x = h.value.abs, fill = data.version)) +
                      guide = "none") +
   labs(x = "Difference from Original Hurst Exponent (Dropped - Original)",
        y = "Density") +
+  ggtitle("MindinMotion (Absolute)") +
+  theme(plot.title = element_text(hjust = 0.5)) +
   facet_grid(rows = vars(drops),
              cols = vars(strides),
              labeller = labeller(strides = function(x) paste0(x, " Strides")),
@@ -588,6 +614,8 @@ ggplot(dat.long, aes(x = h.value, fill = data.version)) +
                      guide = "none") +
   labs(x = "Difference from Original Hurst Exponent (Dropped - Original)",
        y = "Density") +
+  ggtitle("MindinMotion (Relative)") +
+  theme(plot.title = element_text(hjust = 0.5)) +
   facet_grid(rows = vars(drops),
              cols = vars(strides),
              labeller = labeller(strides = function(x) paste0(x, " Strides")),
