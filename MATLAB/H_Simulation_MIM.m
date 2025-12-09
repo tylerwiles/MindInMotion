@@ -41,6 +41,7 @@ min_vec = [51 101 151 201];
 n_files = length(my_files);
 n_drops = numel(drops);
 n_min = numel(min_vec);
+n_rep = 2; % number of repetitions for each file / min_contacts / drop
 
 % one H per file x min_contacts setting
 h_original = NaN(n_files, n_min);
@@ -50,15 +51,15 @@ speed = cell(n_files, n_min);
 terrain = cell(n_files, n_min);
 trial = cell(n_files, n_min);
 
-% per file x min_contacts x %drop
+% per file x min_contacts x %drop x rep
 drops_used = NaN(n_files, n_min, n_drops);
 strides = NaN(n_files, n_min, n_drops);
 strides_cut = NaN(n_files, n_min, n_drops);
 strides_new_length = NaN(n_files, n_min, n_drops);
-h_random = NaN(n_files, n_min, n_drops);
-h_contiguous = NaN(n_files, n_min, n_drops);
+h_random = NaN(n_files, n_min, n_drops, n_rep);
+h_contiguous = NaN(n_files, n_min, n_drops, n_rep);
 
-parfor i = 1:length(my_files)
+parfor i = 1:3
 
     % Getting filenames that will be useful for the rest of the code
     base_filename = my_files(i).name;
@@ -103,8 +104,8 @@ parfor i = 1:length(my_files)
             strides_row = NaN(1, n_drops);
             strides_cut_row = NaN(1, n_drops);
             strides_new_length_row = NaN(1, n_drops);
-            h_random_row = NaN(1, n_drops);
-            h_contiguous_row = NaN(1, n_drops);
+            h_random_row = NaN(n_drops, n_rep);
+            h_contiguous_row = NaN(n_drops, n_rep);
             id{i} = temp_id{6};
             treadmill{i} = temp_id_condition{1};
             speed{i} = temp_id_condition{2};
@@ -123,24 +124,29 @@ parfor i = 1:length(my_files)
                 strides_row(j) = n_total; % Number of strides
                 strides_cut_row(j) = n_total - n_keep; % Number of strides cut
 
-                intervals_random = intervals(sort(randperm(n_total, n_keep))); % Cut the dataframe
+                strides_new_length_row(j) = n_keep;  % Length of new time series
 
-                strides_new_length_row(j) = length(intervals_random);  % Length of new time series
+                % run the random / contiguous removal n_rep times
+                for r = 1:n_rep
 
-                h_random_row(j) = median(bayesH(intervals_random, 200)); % Get H
+                    % random removal
+                    intervals_random = intervals(sort(randperm(n_total, n_keep))); % Cut the dataframe
+                    h_random_row(j,r) = median(bayesH(intervals_random, 200)); % Get H
 
-                % Do the same for contiguous strides
-                n_drop = n_total - n_keep; % Number of strides to cut
+                    % Do the same for contiguous strides
+                    n_drop = n_total - n_keep; % Number of strides to cut
 
-                start_idx = randi(n_total - n_drop + 1); % choose random start for contiguous block to cut
+                    start_idx = randi(n_total - n_drop + 1); % choose random start for contiguous block to cut
 
-                % Create index of those to keep, then assign those that will be removed a zero
-                keep_mask = true(n_total, 1);
-                keep_mask(start_idx:start_idx + n_drop - 1) = false;
+                    % Create index of those to keep, then assign those that will be removed a zero
+                    keep_mask = true(n_total, 1);
+                    keep_mask(start_idx:start_idx + n_drop - 1) = false;
 
-                intervals_contiguous = intervals(keep_mask); % Cut based on index above
+                    intervals_contiguous = intervals(keep_mask); % Cut based on index above
 
-                h_contiguous_row(j) = median(bayesH(intervals_contiguous, 200)); % Get H
+                    h_contiguous_row(j,r) = median(bayesH(intervals_contiguous, 200)); % Get H
+
+                end
 
             end
 
@@ -149,8 +155,8 @@ parfor i = 1:length(my_files)
             drops_used(i,k,:) = drops_used_row;
             strides_cut(i,k,:) = strides_cut_row;
             strides_new_length(i,k,:) = strides_new_length_row;
-            h_random(i,k,:) = h_random_row;
-            h_contiguous(i,k,:) = h_contiguous_row;
+            h_random(i,k,:,:) = reshape(h_random_row, [1 1 n_drops n_rep]);
+            h_contiguous(i,k,:,:) = reshape(h_contiguous_row, [1 1 n_drops n_rep]);
 
         end
 
@@ -163,48 +169,55 @@ n_files = length(my_files);
 n_drops = numel(drops);
 n_min = numel(min_vec);
 
-% Flatten per-(file, min, drop) matrices into column vectors
-strides_col = strides(:);
-drops_col = drops_used(:);
-strides_cut_col = strides_cut(:);
-strides_new_length_col = strides_new_length(:);
+% Flatten per-(file, min, drop, rep) matrices into column vectors
+% First, replicate non-rep quantities across rep dimension
+strides_rep = repmat(strides, 1, 1, 1, n_rep);
+drops_rep = repmat(drops_used, 1, 1, 1, n_rep);
+strides_cut_rep = repmat(strides_cut, 1, 1, 1, n_rep);
+strides_new_length_rep = repmat(strides_new_length, 1, 1, 1, n_rep);
+
+strides_col = strides_rep(:);
+drops_col = drops_rep(:);
+strides_cut_col = strides_cut_rep(:);
+strides_new_length_col = strides_new_length_rep(:);
+
 h_random_col = h_random(:);
 h_contiguous_col = h_contiguous(:);
 
-% Build corresponding min_contacts vector (same shape as strides, etc.)
-min_mat = repmat(reshape(min_vec, 1, n_min, 1), [n_files, 1, n_drops]);
-min_col = min_mat(:);
-
-% Repeat original H for each drop level
-h_original_rep = repmat(h_original, 1, 1, n_drops);
+% Repeat original H for each drop level and rep
+h_original_rep = repmat(h_original, 1, 1, n_drops, n_rep);
 h_original_col = h_original_rep(:);
 
 % Do the same for the id condition variables
 id(:, 2:end) = repmat(id(:,1), 1, size(id,2)-1);
-id_rep = repmat(id, 1, 1, n_drops);
+id_rep = repmat(id, 1, 1, n_drops, n_rep);
 id_col = id_rep(:);
 
 treadmill(:, 2:end) = repmat(treadmill(:,1), 1, size(treadmill,2)-1);
-treadmill_rep = repmat(treadmill, 1, 1, n_drops);
+treadmill_rep = repmat(treadmill, 1, 1, n_drops, n_rep);
 treadmill_col = treadmill_rep(:);
 
 speed(:, 2:end) = repmat(speed(:,1), 1, size(speed,2)-1);
-speed_rep = repmat(speed, 1, 1, n_drops);
+speed_rep = repmat(speed, 1, 1, n_drops, n_rep);
 speed_col = speed_rep(:);
 
 terrain(:, 2:end) = repmat(terrain(:,1), 1, size(terrain,2)-1);
-terrain_rep = repmat(terrain, 1, 1, n_drops);
+terrain_rep = repmat(terrain, 1, 1, n_drops, n_rep);
 terrain_col = terrain_rep(:);
 
 trial(:, 2:end) = repmat(trial(:,1), 1, size(trial,2)-1);
-trial_rep = repmat(trial, 1, 1, n_drops);
+trial_rep = repmat(trial, 1, 1, n_drops, n_rep);
 trial_col = trial_rep(:);
 
+% repetition index
+rep_mat = repmat(reshape(1:n_rep, 1, 1, 1, n_rep), [n_files, n_min, n_drops, 1]);
+rep_col = rep_mat(:);
+
 % Build table in desired column order
-results = table(id_col, treadmill_col, speed_col, terrain_col, trial_col, ...
+results = table(id_col, treadmill_col, speed_col, terrain_col, trial_col, rep_col, ...
     strides_col, drops_col, strides_cut_col, strides_new_length_col, ...
     h_original_col, h_random_col, h_contiguous_col, ...
-    'VariableNames', {'id', 'treadmill', 'speed', 'terrain', 'trial', ...
+    'VariableNames', {'id', 'treadmill', 'speed', 'terrain', 'trial', 'rep', ...
     'strides', 'drops', 'strides.cut', 'strides.new.length', ...
     'h.original', 'h.random', 'h.contiguous'});
 

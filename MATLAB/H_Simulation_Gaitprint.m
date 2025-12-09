@@ -29,6 +29,7 @@ min_vec = [50 100 150 200];
 n_files = length(my_files);
 n_drops = numel(drops);
 n_min = numel(min_vec);
+n_rep = 10; % number of repetitions for each i / min_contacts / drop
 
 % one H per file x min_contacts setting
 h_original = NaN(n_files, n_min);
@@ -38,13 +39,13 @@ speed = cell(n_files, n_min);
 terrain = cell(n_files, n_min);
 trial = cell(n_files, n_min);
 
-% per file x min_contacts x %drop
+% per file x min_contacts x %drop x rep
 drops_used = NaN(n_files, n_min, n_drops);
 strides = NaN(n_files, n_min, n_drops);
 strides_cut = NaN(n_files, n_min, n_drops);
 strides_new_length = NaN(n_files, n_min, n_drops);
-h_random = NaN(n_files, n_min, n_drops);
-h_contiguous = NaN(n_files, n_min, n_drops);
+h_random = NaN(n_files, n_min, n_drops, n_rep);
+h_contiguous = NaN(n_files, n_min, n_drops, n_rep);
 
 parfor i = 1:length(my_files)
 
@@ -92,8 +93,8 @@ parfor i = 1:length(my_files)
                 strides_row = NaN(1, n_drops);
                 strides_cut_row = NaN(1, n_drops);
                 strides_new_length_row = NaN(1, n_drops);
-                h_random_row = NaN(1, n_drops);
-                h_contiguous_row = NaN(1, n_drops);
+                h_random_row = NaN(n_drops, n_rep);
+                h_contiguous_row = NaN(n_drops, n_rep);
                 id{i} = png_filename;
 
                 n_total = length(stride_intervals_cut); % total strides for this file
@@ -108,24 +109,29 @@ parfor i = 1:length(my_files)
                     strides_row(j) = n_total; % Number of strides
                     strides_cut_row(j) = n_total - n_keep; % Number of strides cut
 
-                    stride_intervals_cut_random = stride_intervals_cut(sort(randperm(n_total, n_keep))); % Cut the dataframe
+                    % length-based stuff does not change across repetitions
+                    strides_new_length_row(j) = n_keep;
 
-                    strides_new_length_row(j) = length(stride_intervals_cut_random);  % Length of new time series
+                    % run the random / contiguous removal n_rep times
+                    for r = 1:n_rep
 
-                    h_random_row(j) = median(bayesH(stride_intervals_cut_random, 200)); % Get H
+                        % random removal
+                        stride_intervals_cut_random = stride_intervals_cut(sort(randperm(n_total, n_keep)));
+                        h_random_row(j,r) = median(bayesH(stride_intervals_cut_random, 200)); % Get H
 
-                    % Do the same for contiguous strides
-                    n_drop = n_total - n_keep; % Number of strides to cut
+                        % contiguous removal
+                        n_drop = n_total - n_keep; % Number of strides to cut
+                        start_idx = randi(n_total - n_drop + 1); % choose random start for contiguous block to cut
 
-                    start_idx = randi(n_total - n_drop + 1); % choose random start for contiguous block to cut
+                        % Create index of those to keep, then assign those that will be removed a zero
+                        keep_mask = true(n_total, 1);
+                        keep_mask(start_idx:start_idx + n_drop - 1) = false;
 
-                    % Create index of those to keep, then assign those that will be removed a zero
-                    keep_mask = true(n_total, 1);
-                    keep_mask(start_idx:start_idx + n_drop - 1) = false;
+                        stride_intervals_cut_contiguous = stride_intervals_cut(keep_mask); % Cut based on index above
 
-                    stride_intervals_cut_contiguous = stride_intervals_cut(keep_mask); % Cut based on index above
+                        h_contiguous_row(j,r) = median(bayesH(stride_intervals_cut_contiguous, 200)); % Get H
 
-                    h_contiguous_row(j) = median(bayesH(stride_intervals_cut_contiguous, 200)); % Get H
+                    end
 
                 end
 
@@ -134,8 +140,8 @@ parfor i = 1:length(my_files)
                 drops_used(i,k,:) = drops_used_row;
                 strides_cut(i,k,:) = strides_cut_row;
                 strides_new_length(i,k,:) = strides_new_length_row;
-                h_random(i,k,:) = h_random_row;
-                h_contiguous(i,k,:) = h_contiguous_row;
+                h_random(i,k,:,:) = reshape(h_random_row, [1 1 n_drops n_rep]);
+                h_contiguous(i,k,:,:) = reshape(h_contiguous_row, [1 1 n_drops n_rep]);
 
             end
 
@@ -150,36 +156,43 @@ n_files = length(my_files);
 n_drops = numel(drops);
 n_min = numel(min_vec);
 
-% Flatten per-(file, min, drop) matrices into column vectors
-strides_col = strides(:);
-drops_col = drops_used(:);
-strides_cut_col = strides_cut(:);
-strides_new_length_col = strides_new_length(:);
+% Flatten per-(file, min, drop, rep) matrices into column vectors
+% First, replicate non-rep quantities across rep dimension
+strides_rep = repmat(strides, 1, 1, 1, n_rep);
+drops_rep = repmat(drops_used, 1, 1, 1, n_rep);
+strides_cut_rep = repmat(strides_cut, 1, 1, 1, n_rep);
+strides_new_length_rep = repmat(strides_new_length, 1, 1, 1, n_rep);
+
+strides_col = strides_rep(:);
+drops_col = drops_rep(:);
+strides_cut_col = strides_cut_rep(:);
+strides_new_length_col = strides_new_length_rep(:);
+
 h_random_col = h_random(:);
 h_contiguous_col = h_contiguous(:);
 
-% Build corresponding min_contacts vector (same shape as strides, etc.)
-min_mat = repmat(reshape(min_vec, 1, n_min, 1), [n_files, 1, n_drops]);
-min_col = min_mat(:);
-
-% Repeat original H for each drop level
-h_original_rep = repmat(h_original, 1, 1, n_drops);
+% Repeat original H for each drop level and rep
+h_original_rep = repmat(h_original, 1, 1, n_drops, n_rep);
 h_original_col = h_original_rep(:);
 
-% Do the same for the id condition variables
+% Repeat id for each min, drop, and rep
 id(:, 2:end) = repmat(id(:,1), 1, size(id,2)-1);
-id_rep = repmat(id, 1, 1, n_drops);
+id_rep = repmat(id, 1, 1, n_drops, n_rep);
 id_col = id_rep(:);
 
+% repetition index
+rep_mat = repmat(reshape(1:n_rep, 1, 1, 1, n_rep), [n_files, n_min, n_drops, 1]);
+rep_col = rep_mat(:);
+
 % Build table in desired column order
-results = table(id_col, ...
+results = table(id_col, rep_col, ...
     strides_col, drops_col, strides_cut_col, strides_new_length_col, ...
     h_original_col, h_random_col, h_contiguous_col, ...
-    'VariableNames', {'id', ...
+    'VariableNames', {'id', 'rep', ...
     'strides', 'drops', 'strides.cut', 'strides.new.length', ...
     'h.original', 'h.random', 'h.contiguous'});
 
-% % Remove skipped trials / thresholds
+% Remove skipped trials / thresholds
 % valid_idx = ~isnan(h_random_col);
 % results = results(valid_idx,:);
 
