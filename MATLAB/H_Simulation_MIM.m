@@ -41,7 +41,7 @@ min_vec = [51 101 151 201];
 n_files = length(my_files);
 n_drops = numel(drops);
 n_min = numel(min_vec);
-n_rep = 2; % number of repetitions for each file / min_contacts / drop
+n_rep = 50; % number of repetitions for each file / min_contacts / drop
 
 % one H per file x min_contacts setting
 h_original = NaN(n_files, n_min);
@@ -58,8 +58,8 @@ strides_cut = NaN(n_files, n_min, n_drops);
 strides_new_length = NaN(n_files, n_min, n_drops);
 h_random = NaN(n_files, n_min, n_drops, n_rep);
 h_contiguous = NaN(n_files, n_min, n_drops, n_rep);
-
-parfor i = 1:3
+tic()
+parfor i = 1:length(my_files)
 
     % Getting filenames that will be useful for the rest of the code
     base_filename = my_files(i).name;
@@ -163,7 +163,7 @@ parfor i = 1:3
     end
 
 end
-
+toc()
 % Combine outputs from parfor into one long table
 n_files = length(my_files);
 n_drops = numel(drops);
