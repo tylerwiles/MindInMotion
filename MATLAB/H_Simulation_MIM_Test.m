@@ -77,6 +77,7 @@ parfor i = 1:length(my_files)
         entropies(i,:) = NaN;
         intervals_mean(i,:) = NaN;
         intervals_sd(i,:) = NaN;
+        n_intervals = NaN;
     else
         % contacts_latency = contacts_latency(1:min_contacts); % Cut to first # of minimum strides
         contacts_latency = contacts_latency(max(1, numel(contacts_latency) - min_contacts + 1):end); % Cut to last # of minimum strides
@@ -86,14 +87,15 @@ parfor i = 1:length(my_files)
 
         % Remove intervals that are greater/lower than three standard
         % deviations from the mean. Record number of dropped intervals
-        intervals_length_original = numel(intervals);
+        intervals_length_original_temp = numel(intervals);
+        intervals_length_original(i,:) = numel(intervals);
         intervals_mean = mean(intervals);
         intervals_sd = std(intervals);
         intervals_thresh_upper = intervals_mean + 3 * intervals_sd;
         intervals_thresh_lower = intervals_mean - 3 * intervals_sd;
         intervals = intervals(intervals >= intervals_thresh_lower & intervals <= intervals_thresh_upper);
-        intervals_dropped(i,:) = intervals_length_original - numel(intervals);
-        pct_timeseries(i,:) = ((intervals_length_original - numel(intervals)) / intervals_length_original) * 100;
+        intervals_dropped(i,:) = intervals_length_original_temp - numel(intervals);
+        pct_timeseries(i,:) = ((intervals_length_original_temp - numel(intervals)) / intervals_length_original_temp) * 100;
 
         % Hurst Exponent
         hurst = median(bayesH(intervals, 200));
@@ -117,6 +119,6 @@ parfor i = 1:length(my_files)
 end
 
 % Export
-mim_results = table(id, treadmill, speed, terrain, trial, hursts, entropies, intervals_dropped, pct_timeseries, ...
-    'VariableNames', {'id', 'treadmill', 'speed', 'terrain', 'trial', 'hurst', 'entropy', 'n.intervals.dropped', 'pct.timeseries.dropped'});
-writetable(mim_results, fullfile(output_directory, 'H_Simulation_MIM_Results_Test.csv'));
+mim_results = table(id, treadmill, speed, terrain, trial, hursts, entropies, intervals_length_original, intervals_dropped, pct_timeseries, ...
+    'VariableNames', {'id', 'treadmill', 'speed', 'terrain', 'trial', 'hurst', 'entropy', 'n.intervals.original', 'n.intervals.dropped', 'pct.timeseries.dropped'});
+writetable(mim_results, fullfile(output_directory, 'H_Simulation_MIM_Hypothesis.csv'));
