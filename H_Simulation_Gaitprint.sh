@@ -4,7 +4,7 @@
 #SBATCH --nodes=1 # Number of Physical Servers
 #SBATCH --ntasks=1 # Number of CPUs
 #SBATCH --cpus-per-task=24 # Number of cores per task
-#SBATCH --mem=128gb # Job memory request
+#SBATCH --mem=256gb # Job memory request
 #SBATCH --distribution=cyclic:cyclic # Distribute tasks cyclically 
 #SBATCH --time=0-06:00 # Time limit days-hrs:min
 #SBATCH --qos=dferris # -b to use Burst

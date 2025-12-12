@@ -143,7 +143,11 @@ result.lists = foreach(i = seq_len(n.files),
                                
                                row.idx.i = row.idx.i + 1L # Store ONE row per (file, min.contacts, drop)
                                
-                               rows.list.i[[row.idx.i]] = list(id = png.filename,
+                               rows.list.i[[row.idx.i]] = list(id = strsplit(png.filename, "_", fixed = TRUE)[[1]][1],
+                                                               treadmill = strsplit(png.filename, "_", fixed = TRUE)[[1]][2],
+                                                               speed = strsplit(png.filename, "_", fixed = TRUE)[[1]][3],
+                                                               terrain = strsplit(png.filename, "_", fixed = TRUE)[[1]][4],
+                                                               trial = strsplit(png.filename, "_", fixed = TRUE)[[1]][5],
                                                                rep = n.rep, # Number of repetitions that were averaged
                                                                stride.intervals = strides.val, # Number of original strides
                                                                drops = this.drop, # % of trial to be dropped
@@ -173,7 +177,8 @@ stopCluster(cl)
 # Flatten and make table
 rows.list.all = result.lists
 results = do.call(rbind.data.frame, c(rows.list.all, list(stringsAsFactors = FALSE)))
-results = results[, c("id", "rep", "stride.intervals", "drops",
+results = results[, c("id", "treadmill", "speed", "terrain", "trial", 
+                      "rep", "stride.intervals", "drops",
                       "stride.intervals.cut", "stride.intervals.new.length",
                       "h.original", "h.random", "h.contiguous")]
 
