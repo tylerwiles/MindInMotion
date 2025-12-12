@@ -1,7 +1,11 @@
 
-
-
-# Words
+# Description: This script takes the nonanlibrary fgn_sim function to create
+# thousands of time series with the same mean and standard deviation. Original
+# time series are swept for a given H, and then are reduced in size randomly or
+# contiguously to mimic data drop out over a range of % dropout. This code is
+# written to be run on Hipergator but minor changes will run locally. Because
+# this script takes so long, h.target and the write.csv need to be broken up in
+# chunks so each section can be run in parallel.
 
 options(scipen = 999)
 rm(list = ls())
@@ -22,11 +26,11 @@ si.mean = 1.05
 si.sd = 0.09
 
 # Create a list of parameter sweeps
-strides = seq(50, 200, 50)
+stride.intervals = seq(50, 200, 50)
 drops = seq(0.02, .1, 0.02)
 h.target = c(seq(0.1, 0.9, 0.1), 0.999)
 
-params = expand.grid(strides = strides,
+params = expand.grid(stride.intervals = stride.intervals,
                      drops = drops,
                      h.target = h.target,
                      KEEP.OUT.ATTRS = FALSE)
@@ -91,13 +95,13 @@ results = foreach(i = 1:nrow(params),
                   .export = character(0),  # don't re-export; already clusterExport'ed
                   .noexport = c('bayesH','Ent_Samp')) %dopar% {
                     
-                    strides.temp = params$strides[i]
+                    stride.intervals.temp = params$stride.intervals[i]
                     drops.temp = params$drops[i]
                     h.target.temp = params$h.target[i]
                     id.temp = params$id[i]
                     
                     # Create a time series that mimics the behavior of typical stride intervals
-                    dat = fgn_sim(n = strides.temp, H = h.target.temp) * si.sd + si.mean
+                    dat = fgn_sim(n = stride.intervals.temp, H = h.target.temp) * si.sd + si.mean
                     h.original = median(bayesH(dat, 200)) # Take the median of 200 samples for H
                     # tol = 0.25 * sd(dat)
                     # sampen.original = Ent_Samp(dat, 2, tol) # Run Sample Entropy on 25% the SD of the time series
@@ -119,10 +123,10 @@ results = foreach(i = 1:nrow(params),
                     # sampen.test.contiguous = Ent_Samp(dat.contiguous, 2, tol) # Run Sample Entropy on 25% the SD of the time series
                     
                     data.frame(id = id.temp,
-                               strides = strides.temp,
+                               stride.intervals = stride.intervals.temp,
                                drops = drops.temp,
-                               strides.cut = length(dat) - length(dat.rand),
-                               strides.new.length = length(dat.rand),
+                               stride.intervals.cut = length(dat) - length(dat.rand),
+                               stride.intervals.new.length = length(dat.rand),
                                h.target = h.target.temp,
                                h.original = h.original,
                                h.test.random = h.test.random,
