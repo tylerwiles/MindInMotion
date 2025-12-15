@@ -1,5 +1,5 @@
 
-% TITLE: H_Simulation_MIM_Test.m
+% TITLE: H_Simulation_MIM_Hypothesis.m
 % DATE: 11/27/2025
 % AUTHOR: Tyler M. Wiles, PhD
 % EMAIL: twiles@ufl.edu
@@ -89,10 +89,12 @@ parfor i = 1:length(my_files)
         % deviations from the mean. Record number of dropped intervals
         intervals_length_original_temp = numel(intervals);
         intervals_length_original(i,:) = numel(intervals);
-        intervals_mean = mean(intervals);
-        intervals_sd = std(intervals);
-        intervals_thresh_upper = intervals_mean + 3 * intervals_sd;
-        intervals_thresh_lower = intervals_mean - 3 * intervals_sd;
+        intervals_mean_temp = mean(intervals);
+        intervals_mean(i,:) = intervals_mean_temp;
+        intervals_sd_temp = std(intervals);
+        intervals_sd(i,:) = intervals_sd_temp;
+        intervals_thresh_upper = intervals_mean_temp + 3 * intervals_sd_temp;
+        intervals_thresh_lower = intervals_mean_temp - 3 * intervals_sd_temp;
         intervals = intervals(intervals >= intervals_thresh_lower & intervals <= intervals_thresh_upper);
         intervals_dropped(i,:) = intervals_length_original_temp - numel(intervals);
         pct_timeseries(i,:) = ((intervals_length_original_temp - numel(intervals)) / intervals_length_original_temp) * 100;
@@ -119,6 +121,10 @@ parfor i = 1:length(my_files)
 end
 
 % Export
-mim_results = table(id, treadmill, speed, terrain, trial, hursts, entropies, intervals_length_original, intervals_dropped, pct_timeseries, ...
-    'VariableNames', {'id', 'treadmill', 'speed', 'terrain', 'trial', 'hurst', 'entropy', 'n.intervals.original', 'n.intervals.dropped', 'pct.timeseries.dropped'});
+mim_results = table(id, treadmill, speed, terrain, trial, ...
+    hursts, entropies, ...
+    intervals_length_original, intervals_dropped, pct_timeseries, intervals_mean, intervals_sd, ...
+    'VariableNames', {'id', 'treadmill', 'speed', 'terrain', 'trial', ...
+    'hurst', 'entropy', ...
+    'n.intervals.original', 'n.intervals.dropped', 'pct.timeseries.dropped', 'intervals.mean', 'intervals.sd'});
 writetable(mim_results, fullfile(output_directory, 'H_Simulation_MIM_Hypothesis.csv'));
