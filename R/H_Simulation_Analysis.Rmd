@@ -11,6 +11,8 @@ knitr::opts_chunk$set(echo = TRUE)
 
 Description
 
+Words
+
 # Simulation
 
 Analysis of data obtained from our simulations
@@ -22,6 +24,8 @@ Analysis of data obtained from our simulations
 options(scipen = 999)
 rm(list=ls())
 
+library(BayesFactor)
+library(bayestestR)
 library(data.table)
 library(here)
 library(ggplot2)
@@ -41,9 +45,6 @@ dat.long = melt(dat,
                 measure.vars = tail(names(dat), 5),
                 variable.name = "data.version",
                 value.name   = "h.value")
-
-# Easier to see/compare results with the differences rather than raw values
-dat.long = dat.long[!(dat.long$data.version %in% c('original', 'random', 'contiguous')), ]
 
 dat.long$drops = dat.long$drops * 100 # Change to percent
 
@@ -65,10 +66,10 @@ Using Bayesian ttests, is H obtained from the dropped time series different from
 
 ```{r BFTests}
 
-library(dplyr)
-library(BayesFactor)
+# Easier to see/compare results with the differences rather than raw values
+dat.long.temp = dat.long[!(dat.long$data.version %in% c('original', 'random', 'contiguous')), ]
 
-bf.abs = dat.long %>%
+bf.abs = dat.long.temp %>%
   group_by(h.target, stride.intervals, drops, data.version) %>%
   summarise(mu = mean(h.value.abs),
             ci.lower = bayestestR::ci(h.value.abs, method = 'hdi', ci = 0.95)$CI_low,
@@ -76,7 +77,7 @@ bf.abs = dat.long %>%
             BF10 = BayesFactor::extractBF(BayesFactor::ttestBF(x = h.value.abs, mu = 0))$bf,
             .groups = "drop")
 
-bf.rel = dat.long %>%
+bf.rel = dat.long.temp %>%
   group_by(h.target, stride.intervals, drops, data.version) %>%
   summarise(mu = mean(h.value),
             ci.lower = bayestestR::ci(h.value, method = 'hdi', ci = 0.95)$CI_low,
@@ -84,60 +85,9 @@ bf.rel = dat.long %>%
             BF10 = BayesFactor::extractBF(BayesFactor::ttestBF(x = h.value, mu = 0))$bf,
             .groups = "drop")
 
-library(dplyr)
-library(purrr)
-library(tidyr)
-library(DFBA)
-bf.rel = dat.long %>%
-  group_by(h.target, stride.intervals, drops, data.version) %>%
-  group_split() %>%
-  map_df(function(df) {
-    y2 = df$h.value
-    mu = rep(0, length(y2))
-    
-    res = DFBA::dfba_wilcoxon(Y1 = mu, Y2 = y2)
-    
-    tibble(h.target = unique(df$h.target),
-           stride.intervals = unique(df$stride.intervals),
-           drops = unique(df$drops),
-           data.version = unique(df$data.version),
-           bayes_factor = res$BF10,
-           mu = mean(df$h.value),
-           std = sd(df$h.value),
-           ci.lower = bayestestR::ci(df$h.value, method = 'hdi', ci = 0.95)$CI_low,
-           ci.upper = bayestestR::ci(df$h.value, method = 'hdi', ci = 0.95)$CI_high,)
-  })
-
-bf.abs = dat.long %>%
-  group_by(h.target, stride.intervals, drops, data.version) %>%
-  group_split() %>%
-  map_df(function(df) {
-    y2 = df$h.value.abs
-    mu = rep(0, length(y2))
-    
-    res = DFBA::dfba_wilcoxon(Y1 = mu, Y2 = y2)
-    
-    tibble(h.target = unique(df$h.target),
-           stride.intervals = unique(df$stride.intervals),
-           drops = unique(df$drops),
-           data.version = unique(df$data.version),
-           bayes_factor = res$BF10,
-           mu = mean(df$h.value.abs),
-           std = sd(df$h.value.abs),
-           ci.lower = bayestestR::ci(df$h.value.abs, method = 'hdi', ci = 0.95)$CI_low,
-           ci.upper = bayestestR::ci(df$h.value.abs, method = 'hdi', ci = 0.95)$CI_high,)
-  })
-
-# Frequentist
-wilcoxon.rel = dat.long %>%
-  dplyr::group_by(h.target, stride.intervals, drops, data.version) %>%
-  rstatix::wilcox_test(h.value ~ 1, mu = 0) %>%
-  rstatix::add_significance()
-
-wilcoxon.abs = dat.long %>%
-  dplyr::group_by(h.target, stride.intervals, drops, data.version) %>%
-  rstatix::wilcox_test(h.value.abs ~ 1, mu = 0) %>%
-  rstatix::add_significance()
+# How many of those are dependent on H?
+table(bf.abs$h.target[bf.abs$BF10 > 1])
+table(bf.rel$h.target[bf.rel$BF10 > 1])
 
 ```
 
@@ -147,7 +97,10 @@ wilcoxon.abs = dat.long %>%
 
 ```{r Absolute}
 
-ci95 = dat.long |>
+# Easier to see/compare results with the differences rather than raw values
+dat.long.temp = dat.long[!(dat.long$data.version %in% c('original', 'random', 'contiguous')), ]
+
+ci95 = dat.long.temp |>
   dplyr::group_by(data.version, h.target, stride.intervals, drops) |>
   dplyr::summarise(h.mean = mean(h.value.abs, na.rm = TRUE),
                    h.median = median(h.value.abs, na.rm = TRUE),
@@ -155,10 +108,10 @@ ci95 = dat.long |>
 
 # Define line types that get more dashed with larger drops
 linetypes = c("solid", "88", "66", "44", "22", "11")
-linetype_map = setNames(rep(linetypes, length.out = length(unique(dat.long$drops))),
-                        sort(unique(dat.long$drops)))
+linetype_map = setNames(rep(linetypes, length.out = length(unique(dat.long.temp$drops))),
+                        sort(unique(dat.long.temp$drops)))
 
-plot.sim.abs = ggplot(dat.long, aes(x = h.value.abs, fill = data.version)) +
+plot.sim.abs = ggplot(dat.long.temp, aes(x = h.value.abs, fill = data.version)) +
   # Beautifying
   theme_classic() +
   scale_x_continuous(limits = c(0, 0.15),
@@ -181,7 +134,8 @@ plot.sim.abs = ggplot(dat.long, aes(x = h.value.abs, fill = data.version)) +
   scale_color_manual(values = c("random.diff" = "#FA4616",
                                 "contiguous.diff" = "#0021A5"),
                      guide = "none") +
-  labs(x = "Difference from Original Hurst Exponent (Dropped - Original)",
+  labs(title = "Simulation",
+       x = "Absolute Difference from Original Hurst Exponent (Dropped - Original)",
        y = "Density") +
   facet_grid(rows = vars(h.target),
              cols = vars(stride.intervals),
@@ -190,8 +144,9 @@ plot.sim.abs = ggplot(dat.long, aes(x = h.value.abs, fill = data.version)) +
              axes = "all_x") +
   theme(legend.position = "top",
         text = element_text(size = 9),
-        axis.text.x = element_text(size = 7),
-        axis.text.y = element_text(size = 7))
+        axis.text.x = element_text(size = 7, angle = 30, hjust = 1),
+        axis.text.y = element_text(size = 7),
+        plot.title = element_text(hjust = 0.5, face = "bold", size = 15))
 
 ggsave(filename = 'C:/Users/twiles/Downloads/sim_abs.jpeg', plot = plot.sim.abs,
        height = 9, units = 'in', dpi = "retina", bg = "white")
@@ -202,7 +157,10 @@ ggsave(filename = 'C:/Users/twiles/Downloads/sim_abs.jpeg', plot = plot.sim.abs,
 
 ```{r Relative}
 
-ci95 = dat.long |>
+# Easier to see/compare results with the differences rather than raw values
+dat.long.temp = dat.long[!(dat.long$data.version %in% c('original', 'random', 'contiguous')), ]
+
+ci95 = dat.long.temp |>
   dplyr::group_by(data.version, h.target, stride.intervals, drops) |>
   dplyr::summarise(h.mean = mean(h.value, na.rm = TRUE),
                    h.median = median(h.value, na.rm = TRUE),
@@ -210,10 +168,10 @@ ci95 = dat.long |>
 
 # Define line types that get more dashed with larger drops
 linetypes = c("solid", "88", "66", "44", "22", "11")
-linetype_map = setNames(rep(linetypes, length.out = length(unique(dat.long$drops))),
-                        sort(unique(dat.long$drops)))
+linetype_map = setNames(rep(linetypes, length.out = length(unique(dat.long.temp$drops))),
+                        sort(unique(dat.long.temp$drops)))
 
-plot.sim.rel = ggplot(dat.long, aes(x = h.value, fill = data.version)) +
+plot.sim.rel = ggplot(dat.long.temp, aes(x = h.value, fill = data.version)) +
   # Beautifying
   theme_classic() +
   scale_x_continuous(limits = c(-0.15, 0.15),
@@ -236,7 +194,8 @@ plot.sim.rel = ggplot(dat.long, aes(x = h.value, fill = data.version)) +
   scale_color_manual(values = c("random.diff" = "#FA4616",
                                 "contiguous.diff" = "#0021A5"),
                      guide = "none") +
-  labs(x = "Difference from Original Hurst Exponent (Dropped - Original)",
+  labs(title = "Simulation",
+       x = "Difference from Original Hurst Exponent (Dropped - Original)",
        y = "Density") +
   facet_grid(rows = vars(h.target),
              cols = vars(stride.intervals),
@@ -246,9 +205,72 @@ plot.sim.rel = ggplot(dat.long, aes(x = h.value, fill = data.version)) +
   theme(legend.position = "top",
         text = element_text(size = 9),
         axis.text.x = element_text(size = 7, angle = 30, hjust = 1),
-        axis.text.y = element_text(size = 7))
+        axis.text.y = element_text(size = 7),
+        plot.title = element_text(hjust = 0.5, face = "bold", size = 15))
 
 ggsave(filename = 'C:/Users/twiles/Downloads/sim_rel.jpeg', plot = plot.sim.rel,
+       height = 9, units = 'in', dpi = "retina", bg = "white")
+
+```
+
+### Raw
+
+```{r Raw}
+
+# Only show the raw Data
+dat.long.temp = dat.long[(dat.long$data.version %in% c('original', 'random', 'contiguous')), ]
+
+ci95 = dat.long.temp |>
+  dplyr::group_by(data.version, h.target, stride.intervals, drops) |>
+  dplyr::summarise(h.mean = mean(h.value, na.rm = TRUE),
+                   h.median = median(h.value, na.rm = TRUE),
+                   .groups = "drop")
+
+# Define line types that get more dashed with larger drops
+linetypes = c("solid", "88", "66", "44", "22", "11")
+linetype_map = setNames(rep(linetypes, length.out = length(unique(dat.long.temp$drops))),
+                        sort(unique(dat.long.temp$drops)))
+
+plot.sim.raw = ggplot(dat.long.temp, aes(x = h.value, fill = data.version)) +
+  # Beautifying
+  theme_classic() +
+  scale_x_continuous(limits = c(0, 1),
+                     breaks = c(seq(0,1,0.1))) +
+  # Raw data
+  geom_density(alpha = 0.3, adjust = 1, show.legend = TRUE) +
+  # Mean lines with varying dash intensity by drops
+  geom_vline(data = ci95, aes(xintercept = h.mean,
+                              color = data.version,
+                              linetype = factor(drops)),
+             linewidth = 0.6,
+             show.legend = TRUE) +
+  scale_linetype_manual(values = linetype_map,
+                        name = "Dropped Data (%)") +
+  # More beautifying
+  scale_fill_manual(values = c("original" = scales::alpha("black", 0.1),
+                               "random" = scales::alpha("#FA4616", 0.1),
+                               "contiguous" = scales::alpha("#0021A5", 0.1)),
+                    name = "Data Version",
+                    labels = c("Original", "Random", "Contiguous")) +
+  scale_color_manual(values = c("original" = "black",
+                                "random" = "#FA4616",
+                                "contiguous" = "#0021A5"),
+                     guide = "none") +
+  labs(title = "Simulation",
+       x = "Hurst Exponents",
+       y = "Density") +
+  facet_grid(rows = vars(h.target),
+             cols = vars(stride.intervals),
+             labeller = labeller(h.target = function(x) paste0("H = ", x),
+                                 stride.intervals = function(x) paste0(x, " Stride Intervals")),
+             axes = "all_x") +
+  theme(legend.position = "top",
+        text = element_text(size = 9),
+        axis.text.x = element_text(size = 7, angle = 30, hjust = 1),
+        axis.text.y = element_text(size = 7),
+        plot.title = element_text(hjust = 0.5, face = "bold", size = 15))
+
+ggsave(filename = 'C:/Users/twiles/Downloads/sim_raw.jpeg', plot = plot.sim.raw,
        height = 9, units = 'in', dpi = "retina", bg = "white")
 
 ```
@@ -266,12 +288,17 @@ Analysis of data obtained from Gaitprint
 options(scipen = 999)
 rm(list=ls())
 
+library(BayesFactor)
+library(bayestestR)
 library(data.table)
 library(here)
 library(ggplot2)
 library(ggridges)
 
-dat = data.table::fread(here::here('DATA', 'H_Simulation', 'H_Simulation_Gaitprint_Results.csv'))
+dat1 = data.table::fread(here::here('DATA', 'H_Simulation', 'H_Simulation_Gaitprint1.csv'))
+dat2 = data.table::fread(here::here('DATA', 'H_Simulation', 'H_Simulation_Gaitprint2.csv'))
+dat3 = data.table::fread(here::here('DATA', 'H_Simulation', 'H_Simulation_Gaitprint3.csv'))
+dat = rbind(dat1, dat2, dat3)
 
 setnames(dat, old = c('h.original', 'h.random', 'h.contiguous'),
          new = c('original', 'random', 'contiguous'))
@@ -283,9 +310,6 @@ dat.long = melt(dat,
                 measure.vars = tail(names(dat), 5),
                 variable.name = "data.version",
                 value.name   = "h.value")
-
-# Easier to see/compare results with the differences rather than raw values
-dat.long = dat.long[!(dat.long$data.version %in% c('original', 'random', 'contiguous')), ]
 
 dat.long$drops = dat.long$drops * 100 # Change to percent
 
@@ -309,79 +333,28 @@ Using Bayesian ttests, is H obtained from the dropped time series different from
 
 ```{r BFTests}
 
-library(dplyr)
-library(BayesFactor)
+# Easier to see/compare results with the differences rather than raw values
+dat.long.temp = dat.long[!(dat.long$data.version %in% c('original', 'random', 'contiguous')), ]
 
-bf.abs = dat.long %>%
-  group_by(h.target, stride.intervals, drops, data.version) %>%
+bf.abs = dat.long.temp %>%
+  group_by(stride.intervals, drops, data.version) %>%
   summarise(mu = mean(h.value.abs),
             ci.lower = bayestestR::ci(h.value.abs, method = 'hdi', ci = 0.95)$CI_low,
             ci.upper = bayestestR::ci(h.value.abs, method = 'hdi', ci = 0.95)$CI_high,
             BF10 = BayesFactor::extractBF(BayesFactor::ttestBF(x = h.value.abs, mu = 0))$bf,
             .groups = "drop")
 
-bf.rel = dat.long %>%
-  group_by(h.target, stride.intervals, drops, data.version) %>%
+bf.rel = dat.long.temp %>%
+  group_by(stride.intervals, drops, data.version) %>%
   summarise(mu = mean(h.value),
             ci.lower = bayestestR::ci(h.value, method = 'hdi', ci = 0.95)$CI_low,
             ci.upper = bayestestR::ci(h.value, method = 'hdi', ci = 0.95)$CI_high,
             BF10 = BayesFactor::extractBF(BayesFactor::ttestBF(x = h.value, mu = 0))$bf,
             .groups = "drop")
 
-library(dplyr)
-library(purrr)
-library(tidyr)
-library(DFBA)
-bf.rel = dat.long %>%
-  group_by(h.target, stride.intervals, drops, data.version) %>%
-  group_split() %>%
-  map_df(function(df) {
-    y2 = df$h.value
-    mu = rep(0, length(y2))
-    
-    res = DFBA::dfba_wilcoxon(Y1 = mu, Y2 = y2)
-    
-    tibble(h.target = unique(df$h.target),
-           stride.intervals = unique(df$stride.intervals),
-           drops = unique(df$drops),
-           data.version = unique(df$data.version),
-           bayes_factor = res$BF10,
-           mu = mean(df$h.value),
-           std = sd(df$h.value),
-           ci.lower = bayestestR::ci(df$h.value, method = 'hdi', ci = 0.95)$CI_low,
-           ci.upper = bayestestR::ci(df$h.value, method = 'hdi', ci = 0.95)$CI_high,)
-  })
-
-bf.abs = dat.long %>%
-  group_by(h.target, stride.intervals, drops, data.version) %>%
-  group_split() %>%
-  map_df(function(df) {
-    y2 = df$h.value.abs
-    mu = rep(0, length(y2))
-    
-    res = DFBA::dfba_wilcoxon(Y1 = mu, Y2 = y2)
-    
-    tibble(h.target = unique(df$h.target),
-           stride.intervals = unique(df$stride.intervals),
-           drops = unique(df$drops),
-           data.version = unique(df$data.version),
-           bayes_factor = res$BF10,
-           mu = mean(df$h.value.abs),
-           std = sd(df$h.value.abs),
-           ci.lower = bayestestR::ci(df$h.value.abs, method = 'hdi', ci = 0.95)$CI_low,
-           ci.upper = bayestestR::ci(df$h.value.abs, method = 'hdi', ci = 0.95)$CI_high,)
-  })
-
-# Frequentist
-wilcoxon.rel = dat.long %>%
-  dplyr::group_by(h.target, stride.intervals, drops, data.version) %>%
-  rstatix::wilcox_test(h.value ~ 1, mu = 0) %>%
-  rstatix::add_significance()
-
-wilcoxon.abs = dat.long %>%
-  dplyr::group_by(h.target, stride.intervals, drops, data.version) %>%
-  rstatix::wilcox_test(h.value.abs ~ 1, mu = 0) %>%
-  rstatix::add_significance()
+# How many support the alternative?
+table(bf.abs$BF10 > 1)
+table(bf.rel$BF10 > 1)
 
 ```
 
@@ -391,7 +364,10 @@ wilcoxon.abs = dat.long %>%
 
 ```{r Absolute}
 
-ci95 = dat.long |>
+# Easier to see/compare results with the differences rather than raw values
+dat.long.temp = dat.long[!(dat.long$data.version %in% c('original', 'random', 'contiguous')), ]
+
+ci95 = dat.long.temp |>
   dplyr::group_by(data.version, stride.intervals, drops) |>
   dplyr::summarise(h.mean = mean(h.value.abs, na.rm = TRUE),
                    h.median = median(h.value.abs, na.rm = TRUE),
@@ -399,10 +375,10 @@ ci95 = dat.long |>
 
 # Define line types that get more dashed with larger drops
 linetypes = c("solid", "88", "66", "44", "22", "11")
-linetype_map = setNames(rep(linetypes, length.out = length(unique(dat.long$drops))),
-                        sort(unique(dat.long$drops)))
+linetype_map = setNames(rep(linetypes, length.out = length(unique(dat.long.temp$drops))),
+                        sort(unique(dat.long.temp$drops)))
 
-plot.gaitprint.abs = ggplot(dat.long, aes(x = h.value.abs, fill = data.version)) +
+plot.gaitprint.abs = ggplot(dat.long.temp, aes(x = h.value.abs, fill = data.version)) +
   # Beautifying
   theme_classic() +
   scale_x_continuous(limits = c(0, 0.15),
@@ -425,16 +401,19 @@ plot.gaitprint.abs = ggplot(dat.long, aes(x = h.value.abs, fill = data.version))
   scale_color_manual(values = c("random.diff" = "#FA4616",
                                 "contiguous.diff" = "#0021A5"),
                      guide = "none") +
-  labs(x = "Absolute Difference from Original Hurst Exponent (Dropped - Original)",
+  labs(title = "Gaitprint",
+       x = "Absolute Difference from Original Hurst Exponent (Dropped - Original)",
        y = "Density") +
   facet_grid(rows = vars(drops),
              cols = vars(stride.intervals),
-             labeller = labeller(stride.intervals = function(x) paste0(x, " Stride Intervals")),
+             labeller = labeller(stride.intervals = function(x) paste0(x, " Stride Intervals"),
+                                 drops = function(x) paste0(x, "% Dropped")),
              axes = "all_x") +
   theme(legend.position = "top",
         text = element_text(size = 9),
-        axis.text.x = element_text(size = 7),
-        axis.text.y = element_text(size = 7))
+        axis.text.x = element_text(size = 7, angle = 30, hjust = 1),
+        axis.text.y = element_text(size = 7),
+        plot.title = element_text(hjust = 0.5, face = "bold", size = 15))
 
 ggsave(filename = 'C:/Users/twiles/Downloads/gaitprint_abs.jpeg', plot = plot.gaitprint.abs,
        height = 9, units = 'in', dpi = "retina", bg = "white")
@@ -445,7 +424,10 @@ ggsave(filename = 'C:/Users/twiles/Downloads/gaitprint_abs.jpeg', plot = plot.ga
 
 ```{r Relative}
 
-ci95 = dat.long |>
+# Easier to see/compare results with the differences rather than raw values
+dat.long.temp = dat.long[!(dat.long$data.version %in% c('original', 'random', 'contiguous')), ]
+
+ci95 = dat.long.temp |>
   dplyr::group_by(data.version, stride.intervals, drops) |>
   dplyr::summarise(h.mean = mean(h.value, na.rm = TRUE),
                    h.median = median(h.value, na.rm = TRUE),
@@ -453,10 +435,10 @@ ci95 = dat.long |>
 
 # Define line types that get more dashed with larger drops
 linetypes = c("solid", "88", "66", "44", "22", "11")
-linetype_map = setNames(rep(linetypes, length.out = length(unique(dat.long$drops))),
-                        sort(unique(dat.long$drops)))
+linetype_map = setNames(rep(linetypes, length.out = length(unique(dat.long.temp$drops))),
+                        sort(unique(dat.long.temp$drops)))
 
-plot.gaitprint.rel = ggplot(dat.long, aes(x = h.value, fill = data.version)) +
+plot.gaitprint.rel = ggplot(dat.long.temp, aes(x = h.value, fill = data.version)) +
   # Beautifying
   theme_classic() +
   scale_x_continuous(limits = c(-0.15, 0.15),
@@ -479,18 +461,83 @@ plot.gaitprint.rel = ggplot(dat.long, aes(x = h.value, fill = data.version)) +
   scale_color_manual(values = c("random.diff" = "#FA4616",
                                 "contiguous.diff" = "#0021A5"),
                      guide = "none") +
-  labs(x = "Difference from Original Hurst Exponent (Dropped - Original)",
+  labs(title = "Gaitprint",
+       x = "Difference from Original Hurst Exponent (Dropped - Original)",
        y = "Density") +
   facet_grid(rows = vars(drops),
              cols = vars(stride.intervals),
-             labeller = labeller(stride.intervals = function(x) paste0(x, " Stride Intervals")),
+             labeller = labeller(stride.intervals = function(x) paste0(x, " Stride Intervals"),
+                                 drops = function(x) paste0(x, "% Dropped")),
              axes = "all_x") +
   theme(legend.position = "top",
         text = element_text(size = 9),
-        axis.text.x = element_text(size = 7),
-        axis.text.y = element_text(size = 7))
+        axis.text.x = element_text(size = 7, angle = 30, hjust = 1),
+        axis.text.y = element_text(size = 7),
+        plot.title = element_text(hjust = 0.5, face = "bold", size = 15))
 
 ggsave(filename = 'C:/Users/twiles/Downloads/gaitprint_rel.jpeg', plot = plot.gaitprint.rel,
+       height = 9, units = 'in', dpi = "retina", bg = "white")
+
+```
+
+#### Raw
+
+```{r Raw}
+
+# Only show the raw Data
+dat.long.temp = dat.long[(dat.long$data.version %in% c('original', 'random', 'contiguous')), ]
+
+ci95 = dat.long.temp |>
+  dplyr::group_by(data.version, stride.intervals, drops) |>
+  dplyr::summarise(h.mean = mean(h.value.abs, na.rm = TRUE),
+                   h.median = median(h.value.abs, na.rm = TRUE),
+                   .groups = "drop")
+
+# Define line types that get more dashed with larger drops
+linetypes = c("solid", "88", "66", "44", "22", "11")
+linetype_map = setNames(rep(linetypes, length.out = length(unique(dat.long.temp$drops))),
+                        sort(unique(dat.long.temp$drops)))
+
+plot.gaitprint.raw = ggplot(dat.long.temp, aes(x = h.value.abs, fill = data.version)) +
+  # Beautifying
+  theme_classic() +
+  scale_x_continuous(limits = c(0, 1),
+                     breaks = c(seq(0,1,0.1))) +
+  # Raw data
+  geom_density(alpha = 0.3, adjust = 1, show.legend = TRUE) +
+  # Mean lines with varying dash intensity by drops
+  geom_vline(data = ci95, aes(xintercept = h.mean,
+                              color = data.version,
+                              linetype = factor(drops)),
+             linewidth = 0.6,
+             show.legend = TRUE) +
+  scale_linetype_manual(values = linetype_map,
+                        name = "Dropped Data (%)") +
+  # More beautifying
+  scale_fill_manual(values = c("original" = scales::alpha("black", 0.1),
+                               "random" = scales::alpha("#FA4616", 0.1),
+                               "contiguous" = scales::alpha("#0021A5", 0.1)),
+                    name = "Data Version",
+                    labels = c("Original", "Random", "Contiguous")) +
+  scale_color_manual(values = c("original" = "black",
+                                "random" = "#FA4616",
+                                "contiguous" = "#0021A5"),
+                     guide = "none") +
+  labs(title = "Gaitprint",
+       x = "Hurst Exponent",
+       y = "Density") +
+  facet_grid(rows = vars(drops),
+             cols = vars(stride.intervals),
+             labeller = labeller(stride.intervals = function(x) paste0(x, " Stride Intervals"),
+                                 drops = function(x) paste0(x, "% Dropped")),
+             axes = "all_x") +
+  theme(legend.position = "top",
+        text = element_text(size = 9),
+        axis.text.x = element_text(size = 7, angle = 30, hjust = 1),
+        axis.text.y = element_text(size = 7),
+        plot.title = element_text(hjust = 0.5, face = "bold", size = 15))
+
+ggsave(filename = 'C:/Users/twiles/Downloads/gaitprint_raw.jpeg', plot = plot.gaitprint.raw,
        height = 9, units = 'in', dpi = "retina", bg = "white")
 
 ```
@@ -507,6 +554,8 @@ options(scipen = 999)
 rm(list=ls())
 
 library(BayesFactor)
+library(bayestestR)
+library(BayesFactor)
 library(data.table)
 library(dplyr)
 library(here)
@@ -517,9 +566,10 @@ library(readxl)
 dat = data.table::fread(here::here('DATA', 'H_Simulation', 'H_Simulation_MIM.csv'))
 
 # Only include trials that did not have to contain dropped data due to missing contacts
-dat.ref = data.table::fread(here::here('DATA', 'H_Simulation', 'H_Simulation_MIM_Results_Test.csv'))
+dat.ref = data.table::fread(here::here('DATA', 'H_Simulation', 'H_Simulation_MIM_Hypothesis.csv'))
 dat.ref = dat.ref[dat.ref$n.intervals.dropped == 0]
-dat = merge(dat, dat.ref[ ,1:5], by = c('id', 'treadmill', 'speed', 'terrain', 'trial'), all = FALSE)
+dat.ref$id = apply(dat.ref[, 1:5], 1, function(row) paste(row, collapse = "_"))
+dat = merge(dat, dat.ref[ ,1], by = c('id'), all = FALSE)
 
 dat = dat[!is.nan(stride.intervals)] # Remove skipped trials
 
@@ -533,9 +583,6 @@ dat.long = melt(dat,
                 measure.vars = tail(names(dat), 5),
                 variable.name = "data.version",
                 value.name   = "h.value")
-
-# Easier to see/compare results with the differences rather than raw values
-dat.long = dat.long[!(dat.long$data.version %in% c('original', 'random', 'contiguous')), ]
 
 dat.long$drops = dat.long$drops * 100 # Change to percent
 
@@ -559,79 +606,28 @@ Using Bayesian ttests, is H obtained from the dropped time series different from
 
 ```{r BFTests}
 
-library(dplyr)
-library(BayesFactor)
+# Easier to see/compare results with the differences rather than raw values
+dat.long.temp = dat.long[!(dat.long$data.version %in% c('original', 'random', 'contiguous')), ]
 
-bf.abs = dat.long %>%
-  group_by(h.target, stride.intervals, drops, data.version) %>%
+bf.abs = dat.long.temp %>%
+  group_by(stride.intervals, drops, data.version) %>%
   summarise(mu = mean(h.value.abs),
             ci.lower = bayestestR::ci(h.value.abs, method = 'hdi', ci = 0.95)$CI_low,
             ci.upper = bayestestR::ci(h.value.abs, method = 'hdi', ci = 0.95)$CI_high,
             BF10 = BayesFactor::extractBF(BayesFactor::ttestBF(x = h.value.abs, mu = 0))$bf,
             .groups = "drop")
 
-bf.rel = dat.long %>%
-  group_by(h.target, stride.intervals, drops, data.version) %>%
+bf.rel = dat.long.temp %>%
+  group_by(stride.intervals, drops, data.version) %>%
   summarise(mu = mean(h.value),
             ci.lower = bayestestR::ci(h.value, method = 'hdi', ci = 0.95)$CI_low,
             ci.upper = bayestestR::ci(h.value, method = 'hdi', ci = 0.95)$CI_high,
             BF10 = BayesFactor::extractBF(BayesFactor::ttestBF(x = h.value, mu = 0))$bf,
             .groups = "drop")
 
-library(dplyr)
-library(purrr)
-library(tidyr)
-library(DFBA)
-bf.rel = dat.long %>%
-  group_by(h.target, stride.intervals, drops, data.version) %>%
-  group_split() %>%
-  map_df(function(df) {
-    y2 = df$h.value
-    mu = rep(0, length(y2))
-    
-    res = DFBA::dfba_wilcoxon(Y1 = mu, Y2 = y2)
-    
-    tibble(h.target = unique(df$h.target),
-           stride.intervals = unique(df$stride.intervals),
-           drops = unique(df$drops),
-           data.version = unique(df$data.version),
-           bayes_factor = res$BF10,
-           mu = mean(df$h.value),
-           std = sd(df$h.value),
-           ci.lower = bayestestR::ci(df$h.value, method = 'hdi', ci = 0.95)$CI_low,
-           ci.upper = bayestestR::ci(df$h.value, method = 'hdi', ci = 0.95)$CI_high,)
-  })
-
-bf.abs = dat.long %>%
-  group_by(h.target, stride.intervals, drops, data.version) %>%
-  group_split() %>%
-  map_df(function(df) {
-    y2 = df$h.value.abs
-    mu = rep(0, length(y2))
-    
-    res = DFBA::dfba_wilcoxon(Y1 = mu, Y2 = y2)
-    
-    tibble(h.target = unique(df$h.target),
-           stride.intervals = unique(df$stride.intervals),
-           drops = unique(df$drops),
-           data.version = unique(df$data.version),
-           bayes_factor = res$BF10,
-           mu = mean(df$h.value.abs),
-           std = sd(df$h.value.abs),
-           ci.lower = bayestestR::ci(df$h.value.abs, method = 'hdi', ci = 0.95)$CI_low,
-           ci.upper = bayestestR::ci(df$h.value.abs, method = 'hdi', ci = 0.95)$CI_high,)
-  })
-
-# Frequentist
-wilcoxon.rel = dat.long %>%
-  dplyr::group_by(h.target, stride.intervals, drops, data.version) %>%
-  rstatix::wilcox_test(h.value ~ 1, mu = 0) %>%
-  rstatix::add_significance()
-
-wilcoxon.abs = dat.long %>%
-  dplyr::group_by(h.target, stride.intervals, drops, data.version) %>%
-  rstatix::wilcox_test(h.value.abs ~ 1, mu = 0) %>%
-  rstatix::add_significance()
+# How many support the alternative?
+table(bf.abs$BF10 > 1)
+table(bf.rel$BF10 > 1)
 
 ```
 
@@ -641,7 +637,10 @@ wilcoxon.abs = dat.long %>%
 
 ```{r Absolute}
 
-ci95 = dat.long |>
+# Easier to see/compare results with the differences rather than raw values
+dat.long.temp = dat.long[!(dat.long$data.version %in% c('original', 'random', 'contiguous')), ]
+
+ci95 = dat.long.temp |>
   dplyr::group_by(data.version, stride.intervals, drops) |>
   dplyr::summarise(h.mean = mean(h.value.abs, na.rm = TRUE),
                    h.median = median(h.value.abs, na.rm = TRUE),
@@ -649,10 +648,10 @@ ci95 = dat.long |>
 
 # Define line types that get more dashed with larger drops
 linetypes = c("solid", "88", "66", "44", "22", "11")
-linetype_map = setNames(rep(linetypes, length.out = length(unique(dat.long$drops))),
-                        sort(unique(dat.long$drops)))
+linetype_map = setNames(rep(linetypes, length.out = length(unique(dat.long.temp$drops))),
+                        sort(unique(dat.long.temp$drops)))
 
-plot.mim.abs = ggplot(dat.long, aes(x = h.value.abs, fill = data.version)) +
+plot.mim.abs = ggplot(dat.long.temp, aes(x = h.value.abs, fill = data.version)) +
   # Beautifying
   theme_classic() +
   scale_x_continuous(limits = c(0, 0.15),
@@ -675,16 +674,19 @@ plot.mim.abs = ggplot(dat.long, aes(x = h.value.abs, fill = data.version)) +
   scale_color_manual(values = c("random.diff" = "#FA4616",
                                 "contiguous.diff" = "#0021A5"),
                      guide = "none") +
-  labs(x = "Absoulte Difference from Original Hurst Exponent (Dropped - Original)",
+  labs(title = "MindinMotion",
+       x = "Absolute Difference from Original Hurst Exponent (Dropped - Original)",
        y = "Density") +
   facet_grid(rows = vars(drops),
              cols = vars(stride.intervals),
-             labeller = labeller(stride.intervals = function(x) paste0(x, " Stride Intervals")),
+             labeller = labeller(stride.intervals = function(x) paste0(x, " Stride Intervals"),
+                                 drops = function(x) paste0(x, "% Dropped")),
              axes = "all_x") +
   theme(legend.position = "top",
         text = element_text(size = 9),
-        axis.text.x = element_text(size = 7),
-        axis.text.y = element_text(size = 7))
+        axis.text.x = element_text(size = 7, angle = 30, hjust = 1),
+        axis.text.y = element_text(size = 7),
+        plot.title = element_text(hjust = 0.5, face = "bold", size = 15))
 
 ggsave(filename = 'C:/Users/twiles/Downloads/mim_abs.jpeg', plot = plot.mim.abs,
        height = 9, units = 'in', dpi = "retina", bg = "white")
@@ -695,7 +697,10 @@ ggsave(filename = 'C:/Users/twiles/Downloads/mim_abs.jpeg', plot = plot.mim.abs,
 
 ```{r Relative}
 
-ci95 = dat.long |>
+# Easier to see/compare results with the differences rather than raw values
+dat.long.temp = dat.long[!(dat.long$data.version %in% c('original', 'random', 'contiguous')), ]
+
+ci95 = dat.long.temp |>
   dplyr::group_by(data.version, stride.intervals, drops) |>
   dplyr::summarise(h.mean = mean(h.value, na.rm = TRUE),
                    h.median = median(h.value, na.rm = TRUE),
@@ -703,10 +708,10 @@ ci95 = dat.long |>
 
 # Define line types that get more dashed with larger drops
 linetypes = c("solid", "88", "66", "44", "22", "11")
-linetype_map = setNames(rep(linetypes, length.out = length(unique(dat.long$drops))),
-                        sort(unique(dat.long$drops)))
+linetype_map = setNames(rep(linetypes, length.out = length(unique(dat.long.temp$drops))),
+                        sort(unique(dat.long.temp$drops)))
 
-plot.mim.rel = ggplot(dat.long, aes(x = h.value, fill = data.version)) +
+plot.mim.rel = ggplot(dat.long.temp, aes(x = h.value, fill = data.version)) +
   # Beautifying
   theme_classic() +
   scale_x_continuous(limits = c(-0.15, 0.15),
@@ -729,18 +734,83 @@ plot.mim.rel = ggplot(dat.long, aes(x = h.value, fill = data.version)) +
   scale_color_manual(values = c("random.diff" = "#FA4616",
                                 "contiguous.diff" = "#0021A5"),
                      guide = "none") +
-  labs(x = "Difference from Original Hurst Exponent (Dropped - Original)",
+  labs(title = "MindinMotion",
+       x = "Difference from Original Hurst Exponent (Dropped - Original)",
        y = "Density") +
   facet_grid(rows = vars(drops),
              cols = vars(stride.intervals),
-             labeller = labeller(stride.intervals = function(x) paste0(x, " Stride Intervals")),
+             labeller = labeller(stride.intervals = function(x) paste0(x, " Stride Intervals"),
+                                 drops = function(x) paste0(x, "% Dropped")),
              axes = "all_x") +
   theme(legend.position = "top",
         text = element_text(size = 9),
-        axis.text.x = element_text(size = 7),
-        axis.text.y = element_text(size = 7))
+        axis.text.x = element_text(size = 7, angle = 30, hjust = 1),
+        axis.text.y = element_text(size = 7),
+        plot.title = element_text(hjust = 0.5, face = "bold", size = 15))
 
 ggsave(filename = 'C:/Users/twiles/Downloads/mim_rel.jpeg', plot = plot.mim.rel,
+       height = 9, units = 'in', dpi = "retina", bg = "white")
+
+```
+
+#### Raw
+
+```{r Raw}
+
+# Only show the raw Data
+dat.long.temp = dat.long[(dat.long$data.version %in% c('original', 'random', 'contiguous')), ]
+
+ci95 = dat.long.temp |>
+  dplyr::group_by(data.version, stride.intervals, drops) |>
+  dplyr::summarise(h.mean = mean(h.value.abs, na.rm = TRUE),
+                   h.median = median(h.value.abs, na.rm = TRUE),
+                   .groups = "drop")
+
+# Define line types that get more dashed with larger drops
+linetypes = c("solid", "88", "66", "44", "22", "11")
+linetype_map = setNames(rep(linetypes, length.out = length(unique(dat.long.temp$drops))),
+                        sort(unique(dat.long.temp$drops)))
+
+plot.mim.raw = ggplot(dat.long.temp, aes(x = h.value.abs, fill = data.version)) +
+  # Beautifying
+  theme_classic() +
+  scale_x_continuous(limits = c(0, 1),
+                     breaks = c(seq(0,1,0.1))) +
+  # Raw data
+  geom_density(alpha = 0.3, adjust = 1, show.legend = TRUE) +
+  # Mean lines with varying dash intensity by drops
+  geom_vline(data = ci95, aes(xintercept = h.mean,
+                              color = data.version,
+                              linetype = factor(drops)),
+             linewidth = 0.6,
+             show.legend = TRUE) +
+  scale_linetype_manual(values = linetype_map,
+                        name = "Dropped Data (%)") +
+  # More beautifying
+  scale_fill_manual(values = c("original" = scales::alpha("black", 0.1),
+                               "random" = scales::alpha("#FA4616", 0.1),
+                               "contiguous" = scales::alpha("#0021A5", 0.1)),
+                    name = "Data Version",
+                    labels = c("Original", "Random", "Contiguous")) +
+  scale_color_manual(values = c("original" = "black",
+                                "random" = "#FA4616",
+                                "contiguous" = "#0021A5"),
+                     guide = "none") +
+  labs(title = "MindinMotion",
+       x = "Hurst Exponent",
+       y = "Density") +
+  facet_grid(rows = vars(drops),
+             cols = vars(stride.intervals),
+             labeller = labeller(stride.intervals = function(x) paste0(x, " Stride Intervals"),
+                                 drops = function(x) paste0(x, "% Dropped")),
+             axes = "all_x") +
+  theme(legend.position = "top",
+        text = element_text(size = 9),
+        axis.text.x = element_text(size = 7, angle = 30, hjust = 1),
+        axis.text.y = element_text(size = 7),
+        plot.title = element_text(hjust = 0.5, face = "bold", size = 15))
+
+ggsave(filename = 'C:/Users/twiles/Downloads/mim_raw.jpeg', plot = plot.mim.raw,
        height = 9, units = 'in', dpi = "retina", bg = "white")
 
 ```
@@ -764,7 +834,7 @@ library(ggplot2)
 library(ggridges)
 library(readxl)
 
-dat = data.table::fread(here::here('DATA', 'H_Simulation', 'H_Simulation_MIM_Results_Test.csv'))
+dat = data.table::fread(here::here('DATA', 'H_Simulation', 'H_Simulation_MIM_Hypothesis.csv'))
 dat.demographics = as.data.table(read_excel(here("DATA", "MiM_Crunch_demographics_Chang.xlsx"), sheet = 2))
 dat.demographics = dat.demographics[ ,c(3,6:13)] # Remove unwanted columns
 
@@ -982,7 +1052,7 @@ hursts = ggplot() +
   theme_classic() +
   theme(legend.position = "top") +
   ylim(0, 1)
-ggsave(filename = 'C:/Users/tyler_3r9w1ip/Downloads/MIM_SP_hursts.jpeg', plot = hursts,
+ggsave(filename = 'C:/Users/twiles/Downloads/MIM_SP_hursts_trials.jpeg', plot = hursts,
        dpi = "retina", bg = "white")
 
 entropys = ggplot() +
@@ -1015,7 +1085,7 @@ entropys = ggplot() +
                      labels = c("Trial 1", "Trial 2")) +
   theme_classic() +
   theme(legend.position = "top")
-ggsave(filename = 'C:/Users/tyler_3r9w1ip/Downloads/MIM_SP_entropys.jpeg', plot = entropys,
+ggsave(filename = 'C:/Users/twiles/Downloads/MIM_SP_entropys_trials.jpeg', plot = entropys,
        dpi = "retina", bg = "white")
 
 ```
@@ -1065,7 +1135,7 @@ hursts = ggplot() +
   theme_classic() +
   theme(legend.position = "top") +
   ylim(0, 1)
-ggsave(filename = 'C:/Users/tyler_3r9w1ip/Downloads/MIM_SP_hursts.jpeg', plot = hursts,
+ggsave(filename = 'C:/Users/twiles/Downloads/MIM_SP_hursts_cog.jpeg', plot = hursts,
        dpi = "retina", bg = "white")
 
 entropys = ggplot() +
@@ -1098,7 +1168,7 @@ entropys = ggplot() +
                      labels = c("High Functioning", "Low Functioning")) +
   theme_classic() +
   theme(legend.position = "top")
-ggsave(filename = 'C:/Users/tyler_3r9w1ip/Downloads/MIM_SP_entropys.jpeg', plot = entropys,
+ggsave(filename = 'C:/Users/twiles/Downloads/MIM_SP_entropys_cog.jpeg', plot = entropys,
        dpi = "retina", bg = "white")
 
 ```
