@@ -842,7 +842,7 @@ dat.demographics = dat.demographics[ ,c(3,6:13)] # Remove unwanted columns
 dat = merge(dat, dat.demographics, by.x = "id", by.y = "subject_code", all.x = TRUE)
 
 # Remove skipped trials/NaNs
-dat = dat[!(is.nan(dat$hurst) | dat$hurst == "") | !(is.nan(dat$entropy) | dat$entropy == ""), ]
+dat = dat[!(is.nan(dat$intervals.mean)), ]
 
 # Cleanup
 setnames(dat, old = c("Age", "Sex(1=M,0=F)", "Handedness (1=R, 2=L)", 
@@ -879,12 +879,15 @@ dat$pct.timeseries.dropped = factor(dat$pct.timeseries.dropped)
 
 ```{r BFTests}
 
-# Are there differences between levels of dropped data?
-BayesFactor::anovaBF(hurst ~ n.intervals.dropped + id, data = dat, whichRandom = 'id')
-BayesFactor::anovaBF(entropy ~ n.intervals.dropped + id, data = dat, whichRandom = 'id')
+# dat = dat[complete.cases(dat)]
 
-# Differences between participant features?
-BayesFactor::anovaBF(hurst ~ speed * functioning * trial + id, data = dat, whichRandom = 'id')
+# include people that did all speeds twice with complete cases
+keeps = names(table(dat$id)[table(dat$id) == 8])
+dat = dat[dat$id %in% keeps, ]
+dat = dat[complete.cases(dat[ ,c(1,3,5:7,21)])]
+
+# Differences in H between participant high/low functioning?
+BayesFactor::anovaBF(hurst ~ speed * functioning + id, data = dat, whichRandom = 'id')
 BayesFactor::ttestBF(x = dat$hurst[dat$speed == '0.25' & dat$functioning == 'high.functioning'],
                      y = dat$hurst[dat$speed == '0.25' & dat$functioning == 'low.functioning'],
                      paired = FALSE)
@@ -898,204 +901,69 @@ BayesFactor::ttestBF(x = dat$hurst[dat$speed == '1.0' & dat$functioning == 'high
                      y = dat$hurst[dat$speed == '1.0' & dat$functioning == 'low.functioning'],
                      paired = FALSE)
 
+BayesFactor::ttestBF(x = dat$hurst[dat$speed == '0.25'],
+                     y = dat$hurst[dat$speed == '0.5'],
+                     paired = TRUE)
+BayesFactor::ttestBF(x = dat$hurst[dat$speed == '0.25'],
+                     y = dat$hurst[dat$speed == '0.75'],
+                     paired = TRUE)
+BayesFactor::ttestBF(x = dat$hurst[dat$speed == '0.25'],
+                     y = dat$hurst[dat$speed == '1.0'],
+                     paired = TRUE)
+BayesFactor::ttestBF(x = dat$hurst[dat$speed == '0.5'],
+                     y = dat$hurst[dat$speed == '0.75'],
+                     paired = TRUE)
+BayesFactor::ttestBF(x = dat$hurst[dat$speed == '0.5'],
+                     y = dat$hurst[dat$speed == '1.0'],
+                     paired = TRUE)
+BayesFactor::ttestBF(x = dat$hurst[dat$speed == '0.75'],
+                     y = dat$hurst[dat$speed == '1.0'],
+                     paired = TRUE)
 
-summary(aov(hurst ~ speed * trial * functioning, data = dat))
-t.test(x = dat$hurst[dat$speed == '0.25' & dat$functioning == 'high.functioning'],
-       y = dat$hurst[dat$speed == '0.25' & dat$functioning == 'low.functioning'])
-t.test(x = dat$hurst[dat$speed == '0.5' & dat$functioning == 'high.functioning'],
-       y = dat$hurst[dat$speed == '0.5' & dat$functioning == 'low.functioning'])
-t.test(x = dat$hurst[dat$speed == '0.75' & dat$functioning == 'high.functioning'],
-       y = dat$hurst[dat$speed == '0.75' & dat$functioning == 'low.functioning'])
-t.test(x = dat$hurst[dat$speed == '1.0' & dat$functioning == 'high.functioning'],
-       y = dat$hurst[dat$speed == '1.0' & dat$functioning == 'low.functioning'])
+# For Sample Entropy?
+BayesFactor::anovaBF(entropy ~ speed * functioning + id, data = dat, whichRandom = 'id')
+BayesFactor::ttestBF(x = dat$entropy[dat$speed == '0.25' & dat$functioning == 'high.functioning'],
+                     y = dat$entropy[dat$speed == '0.25' & dat$functioning == 'low.functioning'],
+                     paired = FALSE)
+BayesFactor::ttestBF(x = dat$entropy[dat$speed == '0.5' & dat$functioning == 'high.functioning'],
+                     y = dat$entropy[dat$speed == '0.5' & dat$functioning == 'low.functioning'],
+                     paired = FALSE)
+BayesFactor::ttestBF(x = dat$entropy[dat$speed == '0.75' & dat$functioning == 'high.functioning'],
+                     y = dat$entropy[dat$speed == '0.75' & dat$functioning == 'low.functioning'],
+                     paired = FALSE)
+BayesFactor::ttestBF(x = dat$entropy[dat$speed == '1.0' & dat$functioning == 'high.functioning'],
+                     y = dat$entropy[dat$speed == '1.0' & dat$functioning == 'low.functioning'],
+                     paired = FALSE)
 
-```
-
-```{r lm}
-
-m0 = lm(hurst ~ 1 + speed * functioning * trial, data = dat)
-summary(m0)
-
-
-
-plot(dat$stride.intervals, dat$h.value.abs)
-plot(dat$stride.intervals, dat$h.value)
-
-
-
-m0 = lm(h.value.abs ~ 1 + drops * stride.intervals + data.version, data = dat)
-summary(m0)
-library(emmeans)
-emm <- emmeans(m0, ~ data.version)
-emm
-contrast(emm, method = "eff")   # tests each level against zero
-
-
-
-
-
-
-
-```
-
-
-```{r brms}
-
-library(brms)
-library(cmdstanr)
-
-m0 = brms::brm(hurst ~ 1 + speed * functioning * trial,
-               data = dat,
-               cores = parallel::detectCores() - 1,
-               chains = 4,
-               iter = 3000,
-               threads = threading(4),
-               backend = 'cmdstanr',
-               stan_model_args = list(stanc_options = list('O1')),
-               seed = 4172015,
-               refresh = 1000)
-m0
-plot(m0)
-conditional_effects(m0)
-
-dat$moca = scale(dat$moca)
-dat$sppb = scale(dat$sppb)
-dat$time.400m = scale(dat$time.400m)
-
-m0 = brms::brm(hurst ~ functioning * moca * sppb * time.400m,
-               data = dat,
-               cores = parallel::detectCores() - 1,
-               chains = 4,
-               iter = 3000,
-               threads = threading(4),
-               backend = 'cmdstanr',
-               stan_model_args = list(stanc_options = list('O1')),
-               seed = 4172015,
-               refresh = 1000)
-m0
-plot(m0)
-conditional_effects(m0)
-
-
-m0 = brms::brm(h.value.abs ~ stride.intervals * drops * data.version,
-               data = dat,
-               cores = parallel::detectCores(),
-               chains = 4,
-               iter = 3000,
-               threads = threading(4),
-               backend = 'cmdstanr',
-               stan_model_args = list(stanc_options = list('O1')),
-               seed = 4172015,
-               refresh = 1000)
-
-
-
-
-
-print(summary(m3), digits = 5)
-
-loo(m1, m2, m3, compare = TRUE)
-
-save(m1, m2, m3, file = here('DATA', 'temperature_brms_diff.RData'))
-
-emmeans::emtrends(m3, pairwise ~ mitten | condition, var = 'time_poly2')
-emmeans::emtrends(m3, pairwise ~ mitten | condition, var = 'time_poly3')
-
-
+BayesFactor::ttestBF(x = dat$entropy[dat$speed == '0.25'],
+                     y = dat$entropy[dat$speed == '0.5'],
+                     paired = TRUE)
+BayesFactor::ttestBF(x = dat$entropy[dat$speed == '0.25'],
+                     y = dat$entropy[dat$speed == '0.75'],
+                     paired = TRUE)
+BayesFactor::ttestBF(x = dat$entropy[dat$speed == '0.25'],
+                     y = dat$entropy[dat$speed == '1.0'],
+                     paired = TRUE)
+BayesFactor::ttestBF(x = dat$entropy[dat$speed == '0.5'],
+                     y = dat$entropy[dat$speed == '0.75'],
+                     paired = TRUE)
+BayesFactor::ttestBF(x = dat$entropy[dat$speed == '0.5'],
+                     y = dat$entropy[dat$speed == '1.0'],
+                     paired = TRUE)
+BayesFactor::ttestBF(x = dat$entropy[dat$speed == '0.75'],
+                     y = dat$entropy[dat$speed == '1.0'],
+                     paired = TRUE)
 
 ```
 
 ## Plots
 
-### Trial Differences
-
-```{r Trial Differences}
-
-ci95 = dat |>
-  dplyr::group_by(speed, trial) |>
-  dplyr::summarise(hurst.mean = mean(hurst, na.rm = TRUE),
-                   hurst.ci.lower = bayestestR::ci(hurst, method = 'hdi', ci = 0.95)$CI_low,
-                   hurst.ci.upper = bayestestR::ci(hurst, method = 'hdi', ci = 0.95)$CI_high,
-                   entropy.mean = mean(entropy, na.rm = TRUE),
-                   entropy.ci.lower = bayestestR::ci(entropy, method = 'hdi', ci = 0.95)$CI_low,
-                   entropy.ci.upper = bayestestR::ci(entropy, method = 'hdi', ci = 0.95)$CI_high,
-                   .groups = "drop")
-
-hursts = ggplot() +
-  geom_point(data = dat, aes(x = speed,
-                             y = hurst,
-                             group = trial),
-             color = 'black', size = 1,
-             position = position_jitterdodge(jitter.width = 0.15,
-                                             dodge.width = 0.7)) +
-  # colored lines connecting condition means
-  geom_line(data = ci95, aes(x = speed,
-                             y = hurst.mean,
-                             color = trial,
-                             group = trial),
-            linewidth = 1.2, position = position_dodge(width = 0.7)) +
-  # colored mean points
-  geom_point(data = ci95, aes(x = speed,
-                              y = hurst.mean,
-                              color = trial),
-             size = 4, position = position_dodge(width = 0.7)) +
-  # 95% credible intervals (HDI)
-  geom_errorbar(data = ci95, aes(x = speed,
-                                 ymin = hurst.ci.lower,
-                                 ymax = hurst.ci.upper,
-                                 color = trial),
-                width = 0.6, linewidth = 1, position = position_dodge(width = 0.7)) +
-  # Beautify
-  labs(x = "Speed (m/s)", y = "Hurst Exponent", color = 'Trial') +
-  scale_color_manual(values = c("1" = "#D71920", "2" = "#2C3FDE"),
-                     labels = c("Trial 1", "Trial 2")) +
-  theme_classic() +
-  theme(legend.position = "top") +
-  ylim(0, 1)
-ggsave(filename = 'C:/Users/twiles/Downloads/MIM_SP_hursts_trials.jpeg', plot = hursts,
-       dpi = "retina", bg = "white")
-
-entropys = ggplot() +
-  geom_point(data = dat, aes(x = speed,
-                             y = entropy,
-                             group = trial),
-             color = 'black', size = 1,
-             position = position_jitterdodge(jitter.width = 0.15,
-                                             dodge.width = 0.7)) +
-  # colored lines connecting condition means
-  geom_line(data = ci95, aes(x = speed,
-                             y = entropy.mean,
-                             color = trial,
-                             group = trial),
-            linewidth = 1.2, position = position_dodge(width = 0.7)) +
-  # colored mean points
-  geom_point(data = ci95, aes(x = speed,
-                              y = entropy.mean,
-                              color = trial),
-             size = 4, position = position_dodge(width = 0.7)) +
-  # 95% credible intervals (HDI)
-  geom_errorbar(data = ci95, aes(x = speed,
-                                 ymin = entropy.ci.lower,
-                                 ymax = entropy.ci.upper,
-                                 color = trial),
-                width = 0.6, linewidth = 1, position = position_dodge(width = 0.7)) +
-  # Beautify
-  labs(x = "Speed (m/s)", y = "Sample Entropy", color = 'Trial') +
-  scale_color_manual(values = c("1" = "#D71920", "2" = "#2C3FDE"),
-                     labels = c("Trial 1", "Trial 2")) +
-  theme_classic() +
-  theme(legend.position = "top")
-ggsave(filename = 'C:/Users/twiles/Downloads/MIM_SP_entropys_trials.jpeg', plot = entropys,
-       dpi = "retina", bg = "white")
-
-```
-
 ### Cognitive Function Differences
 
 ```{r Cognitive Function Differences}
 
-ci95 = dat |>
-  dplyr::group_by(speed, functioning) |>
+ci95 = dat %>%
+  dplyr::group_by(speed, functioning) %>%
   dplyr::summarise(hurst.mean = mean(hurst, na.rm = TRUE),
                    hurst.ci.lower = bayestestR::ci(hurst, method = 'hdi', ci = 0.95)$CI_low,
                    hurst.ci.upper = bayestestR::ci(hurst, method = 'hdi', ci = 0.95)$CI_high,
