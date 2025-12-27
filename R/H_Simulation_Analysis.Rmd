@@ -306,6 +306,10 @@ setnames(dat, old = c('h.original', 'h.random', 'h.contiguous'),
 dat$random.diff = dat$random - dat$original
 dat$contiguous.diff = dat$contiguous - dat$original
 
+# Remove trials that had manually corrected heel contacts
+dat.contacts = data.table::fread(here::here('DATA', 'H_Simulation', 'Gaitprint_fixed_contacts.csv'), header = FALSE)
+dat = dat[!id %in% dat.contacts$V1]
+
 dat.long = melt(dat,
                 measure.vars = tail(names(dat), 5),
                 variable.name = "data.version",
